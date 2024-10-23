@@ -16,15 +16,20 @@ set(TEST_SOURCES "test/tensor/test_dense_tensor.c" "test/tensor/test_block_spars
 
 add_executable(            chemtensor_test ${CHEMTENSOR_SOURCES} ${TEST_SOURCES})
 target_include_directories(chemtensor_test PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
-target_link_libraries(     chemtensor_test PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} lapacke ${HDF5_LIBRARIES})
+target_link_libraries(     chemtensor_test PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 
 add_library(               chemtensor_pymodule SHARED ${CHEMTENSOR_SOURCES} "pymodule/pymodule.c")
 target_include_directories(chemtensor_pymodule PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
-target_link_libraries(     chemtensor_pymodule PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} lapacke ${HDF5_LIBRARIES} ${Python3_LIBRARIES})
+target_link_libraries(     chemtensor_pymodule PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES} ${Python3_LIBRARIES})
 set_target_properties(     chemtensor_pymodule PROPERTIES PREFIX "" OUTPUT_NAME "chemtensor" LINKER_LANGUAGE C)
 
 add_executable(            basic_dmrg_fermi_hubbard ${CHEMTENSOR_SOURCES} "examples/dmrg/basic_dmrg_fermi_hubbard.c")
 target_include_directories(basic_dmrg_fermi_hubbard PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
-target_link_libraries(     basic_dmrg_fermi_hubbard PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} lapacke ${HDF5_LIBRARIES})
+target_link_libraries(     basic_dmrg_fermi_hubbard PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
+
+# TODO: Find better solution to build benchmarks and THC-MPO project. Maybe experiments folder?
+add_executable(            thc_mpo ${CHEMTENSOR_SOURCES} "examples/thcmpo/thcmpo.c")
+target_include_directories(thc_mpo PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
+target_link_libraries(     thc_mpo PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 
 add_test(NAME chemtensor_test COMMAND chemtensor_test)
