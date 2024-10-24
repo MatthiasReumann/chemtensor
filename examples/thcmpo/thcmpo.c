@@ -58,7 +58,8 @@ void construct_elementary_thc_mpo(const int nsites, const dcomplex *chi_row, str
     // local_opchains_to_mpo_graph(nsites, lopchains, ARRLEN(lopchains), &assembly->graph);
 }
 
-void construct_elementary_mpo_creation(const int nsites, const dcomplex* chi_row, struct mpo* mpo)
+
+void construct_elementary_mpo(const int nsites, const dcomplex* chi_row, const bool is_creation, struct mpo* mpo)
 {
     const long d = 2;
     const qnumber qd[2] = {0, 1};
@@ -70,21 +71,32 @@ void construct_elementary_mpo_creation(const int nsites, const dcomplex* chi_row
 
     mpo->a = ct_calloc(nsites, sizeof(struct block_sparse_tensor));
     
-    struct dense_tensor dt;
     const enum tensor_axis_direction axis_dir[4] = { TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN, TENSOR_AXIS_IN };
     
+    struct dense_tensor dt;
+
     // first site. dimensions: 1 x d x d x 2
     {
         const long dim[4] = { 1, d, d, 2 };
         allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
-
-        const dcomplex data[8] = { 1, 0, 0, 0, 0, chi_row[0], -1, 0};
-        memcpy(&dt.data[0], &data, 8 * sizeof(dcomplex));
-
-        const qnumber qD[1] = { 0 };
-        const qnumber qD_next[2] = { 0, 1 };
-		const qnumber* qnums[4] = { qD, qd, qd, qD_next};
-        dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[0]);
+        
+        if (is_creation) {
+            const qnumber qD[1] = { 0 };
+            const qnumber qD_next[2] = { 0, 1 };
+            const qnumber* qnums[4] = { qD, qd, qd, qD_next};
+            const dcomplex data[8] = { 1, 0, 0, 0, 0, chi_row[0], -1, 0};
+            
+            memcpy(dt.data, &data, 8 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[0]);
+        } else {
+            const qnumber qD[1] = { 0 };
+            const qnumber qD_next[2] = { 0, -1 };
+            const qnumber* qnums[4] = { qD, qd, qd, qD_next};
+            const dcomplex data[8] = { 1, 0, 0, chi_row[0], 0, 0, -1, 0};
+            
+            memcpy(dt.data, &data, 8 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[0]);
+        }
     }
 
     // intermediate sites: dimensions: 2 x d x d x 2
@@ -93,15 +105,21 @@ void construct_elementary_mpo_creation(const int nsites, const dcomplex* chi_row
         const long dim[4] = { 2, d, d, 2 };
         allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
 
-        const dcomplex data[16] = { 
-            1, 0, 0, 0, 0, chi_row[i], -1, 0,
-            0, 1, 0, 0, 0, 0, 0, 1
-        };
-        memcpy(&dt.data[0], &data, 16 * sizeof(dcomplex));
-		
-		const qnumber qD[2] = { 0, 1 };
-		const qnumber* qnums[4] = { qD, qd, qd, qD };
-        dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[i]);
+        if (is_creation) {
+            const qnumber qD[2] = { 0, 1 };
+		    const qnumber* qnums[4] = { qD, qd, qd, qD };
+            const dcomplex data[16] = { 1, 0, 0, 0, 0, chi_row[i], -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
+            memcpy(dt.data, data, 16 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[i]);
+
+        } else {
+            const qnumber qD[2] = { 0, -1 };
+		    const qnumber* qnums[4] = { qD, qd, qd, qD };
+            const dcomplex data[16] = { 1, 0, 0, chi_row[i], 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
+            
+            memcpy(dt.data, data, 16 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[i]);
+        }
 	}
 
     // last site. dimensions: 2 x d x d x 1
@@ -109,21 +127,43 @@ void construct_elementary_mpo_creation(const int nsites, const dcomplex* chi_row
         const long dim[4] = { 2, d, d, 1 };
         allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
 
-        // TODO: Comment why this order of elements.
-        // TODO: Validate correctness.
-        const dcomplex data[8] = { 0, chi_row[nsites - 1], 0, 0, 1, 0, 0, 1};
-        memcpy(&dt.data[0], &data, 8 * sizeof(dcomplex));
+        if (is_creation) {
+            const qnumber qD[2] = { 0, 1 };
+            const qnumber qD_next[1] = { 1 };
+            const qnumber* qnums[4] = { qD, qd, qd, qD_next};
+            const dcomplex data[8] = { 0, 0, chi_row[nsites - 1], 0, 1, 0, 0, 1};
 
-        const qnumber qD[2] = { 0, 1 };
-        const qnumber qD_next[1] = { 1 };
-		const qnumber* qnums[4] = { qD, qd, qd, qD_next};
-        dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[nsites - 1]);
+            memcpy(dt.data, data, 8 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[nsites - 1]);
+        } else {
+            const qnumber qD[2] = { 0, -1 };
+            const qnumber qD_next[1] = { -1 };
+            const qnumber* qnums[4] = { qD, qd, qd, qD_next};
+            const dcomplex data[8] = { 0, chi_row[nsites - 1], 0, 0, 1, 0, 0, 1};
+
+            memcpy(dt.data, data, 8 * sizeof(dcomplex));
+            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[nsites - 1]);
+        }
     }
 }
 
 void print_mpo(struct mpo mpo)
 {
     printf("MPO: nsites=%d, d=%ld, qsite=(%d, %d)\n", mpo.nsites, mpo.d, mpo.qsite[0], mpo.qsite[1]);
+
+    for(int i = 0; i < mpo.nsites; i++) {
+        struct dense_tensor dt;
+        block_sparse_to_dense_tensor(&mpo.a[i], &dt);
+
+        dcomplex* data = (dcomplex*)(dt.data);
+        const long nblocks = integer_product(dt.dim, dt.ndim);
+        printf("[");
+        for (long k = 0; k < nblocks; k++)
+		{
+			printf(" %.2f", creal(data[k]));
+		}
+        printf("]\n");
+    }
 }
 
 
@@ -131,8 +171,8 @@ int main()
 {
     struct mpo mpo;
     const int nsites = 3;
-    const dcomplex chi_row[3] = {1, 1, 1};
-    construct_elementary_mpo_creation(nsites, chi_row, &mpo);
+    const dcomplex chi_row[3] = { 42, 1337, 72 };
+    construct_elementary_mpo(nsites, chi_row, false, &mpo);
     print_mpo(mpo);
     printf("is_conssitent=%d\n", mpo_is_consistent(&mpo));
 }
