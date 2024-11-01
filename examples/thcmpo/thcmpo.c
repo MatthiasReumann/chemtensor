@@ -282,8 +282,6 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         }
     }
 
-    // TODO: Annihilation operator is probably wrong. Should be 0. See paper.
-    //       Yu probably used the chi_row vector with 0s to achieve this.
     assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
