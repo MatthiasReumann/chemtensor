@@ -235,6 +235,17 @@ void THCMPO_calculate_phi(const struct mps *psi, struct g *g, const long N, cons
     }
 }
 
+
+void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], struct mpo_graph_edge* edge) 
+{
+    edge->nopics = 1;
+    edge->opics = ct_malloc(sizeof(struct local_op_ref));
+    edge->opics->oid = oid;
+    edge->opics->cid = cid;
+    edge->vids[0] = vids[0];
+    edge->vids[1] = vids[1];
+}
+
 void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const bool is_creation, struct mpo_assembly *assembly)
 {
     // physical quantum numbers (particle number)
@@ -247,8 +258,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
     const int OID_B = 2;  // bosonic creation or annihilation depending on `is_creation`
 
     const dcomplex z[4] = {1., 0., 0., -1.};            // Z
-    const dcomplex creation[4] = {1., 0., 0., -1.};     // bosonic creation
-    const dcomplex annihilation[4] = {1., 0., 0., -1.}; // bosonic annihilation
+    const dcomplex creation[4] = {0., 0., 1., 0.};     // bosonic creation
+    const dcomplex annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
 
     // first two entries of coeffmap must always be 0 and 1
 	const dcomplex coeffmap[] = { 0, 1 };
@@ -311,28 +322,28 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         assembly->graph.num_verts[1] = 2;
         
         // e0
-        assembly->graph.edges[0][0].nopics = 1;
-        assembly->graph.edges[0][0].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[0][0].opics->oid = OID_Z;
-        assembly->graph.edges[0][0].opics->cid = CID_ONE;
-        assembly->graph.edges[0][0].vids[0] = 0;
-        assembly->graph.edges[0][0].vids[1] = 0;
-        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[0][0]);
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_Z, CID_ONE, vids, &assembly->graph.edges[0][0]);
+
+            // v0 -> e0
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[0][0]);
+
+            // e0 <- v1
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[1][0]);
+        }
 
         // e1
-        assembly->graph.edges[0][1].nopics = 1;
-        assembly->graph.edges[0][1].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[0][1].opics->oid = OID_B;
-        assembly->graph.edges[0][1].opics->cid = 2;
-        assembly->graph.edges[0][1].vids[0] = 0;
-        assembly->graph.edges[0][1].vids[1] = 1;
-        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[0][0]);
+        {
+            const int vids[] = {0, 1};
+            construct_thc_mpo_edge(OID_B, 2, vids, &assembly->graph.edges[0][1]);
 
-        // e0 <- v1
-        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[1][0]);
+            // v0 -> e1
+            mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[0][0]);
 
-        // e1 <- v2
-        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[1][1]);
+            // e1 <- v2
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[1][1]);
+        }
     }
 
     // intermediate sites [2, L-2]
@@ -355,35 +366,31 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[i][1]);
 
         // e2
-        assembly->graph.edges[i][0].nopics = 1;
-        assembly->graph.edges[i][0].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[i][0].opics->oid = OID_Z;
-        assembly->graph.edges[i][0].opics->cid = CID_ONE;
-        assembly->graph.edges[i][0].vids[0] = 0;
-        assembly->graph.edges[i][0].vids[1] = 0;
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_Z, CID_ONE, vids, &assembly->graph.edges[i][0]);
+
+            // e2 <- v3
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][0]);
+        }
 
         // e3
-        assembly->graph.edges[i][1].nopics = 1;
-        assembly->graph.edges[i][1].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[i][1].opics->oid = OID_B;
-        assembly->graph.edges[i][1].opics->cid = 2 + i;
-        assembly->graph.edges[i][1].vids[0] = 0;
-        assembly->graph.edges[i][1].vids[1] = 1;
+        {
+            const int vids[] = {0, 1};
+            construct_thc_mpo_edge(OID_B, 2 + i, vids, &assembly->graph.edges[i][1]);
+
+            // e3 <- v4
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i + 1][1]);
+        }
 
         // e4
-        assembly->graph.edges[i][2].nopics = 1;
-        assembly->graph.edges[i][2].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[i][2].opics->oid = OID_Id;
-        assembly->graph.edges[i][2].opics->cid = CID_ONE;
-        assembly->graph.edges[i][2].vids[0] = 1;
-        assembly->graph.edges[i][2].vids[1] = 1;
+        {
+            const int vids[] = {1, 1};
+            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][2]);
 
-        // e2 <- v3
-        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][0]);
-        // e3 <- v4
-        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i + 1][1]);
-        // e4 <- v4
-        mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[i + 1][1]);
+            // e4 <- v4
+            mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[i + 1][1]);
+        }
     }
 
     {
@@ -402,29 +409,25 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites-1][1]);
 
         // e5
-        assembly->graph.edges[nsites - 1][0].nopics = 1;
-        assembly->graph.edges[nsites - 1][0].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[nsites - 1][0].opics->oid = OID_B;
-        assembly->graph.edges[nsites - 1][0].opics->cid = 2 + (nsites - 1);
-        assembly->graph.edges[nsites - 1][0].vids[0] = 0;
-        assembly->graph.edges[nsites - 1][0].vids[1] = 0;
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_B, 2 + (nsites - 1), vids, &assembly->graph.edges[nsites - 1][0]);
+
+            // e5 <- v5
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[nsites][0]);
+        }
 
         // e6
-        assembly->graph.edges[nsites - 1][1].nopics = 1;
-        assembly->graph.edges[nsites - 1][1].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[nsites - 1][1].opics->oid = OID_Id;
-        assembly->graph.edges[nsites - 1][1].opics->cid = CID_ONE;
-        assembly->graph.edges[nsites - 1][1].vids[0] = 1;
-        assembly->graph.edges[nsites - 1][1].vids[1] = 0;
+        {
+            const int vids[] = {1, 0};
+            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[nsites - 1][1]);
 
-        // e5 <- v5
-        // e6 <- v5
-        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[nsites][0]);
-        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[nsites][0]);
+            // e6 <- v5
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[nsites][0]);
+        }
     }
 
     // TODO: Quantum Numbers.
-    // TODO: Cleanup.
     // TODO: Annihilation operator is probably wrong. Should be 0. See paper.
     assert(mpo_graph_is_consistent(&assembly->graph));
 }
