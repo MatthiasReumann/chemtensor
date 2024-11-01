@@ -4,6 +4,15 @@
 #include "operation.h"
 #include "aligned_memory.h"
 
+void print_dt(struct dense_tensor dt)
+{
+    printf("dt=[ndim=%d, dim=(", dt.ndim);
+    for(int i = 0; i < dt.ndim; i++) {
+        printf(" %ld ", dt.dim[i]);
+    }
+    printf(")]\n");
+}
+
 void print_mpo(struct mpo mpo)
 {
     printf("MPO: L=%d, d=%ld, qsite=(%d, %d)\n", mpo.nsites, mpo.d, mpo.qsite[0], mpo.qsite[1]);
@@ -13,7 +22,14 @@ void print_mpo(struct mpo mpo)
         struct dense_tensor dt;
         block_sparse_to_dense_tensor(&mpo.a[i], &dt);
 
+        for(int k = 0; k < mpo.a[i].ndim; k++) {
+            for (int j = 0; j < mpo.a[i].dim_blocks[k]; j++) {
+                printf(" %d ", mpo.a[i].qnums_blocks[k][j]);
+            }
+        }
+
         dcomplex *data = (dcomplex *)(dt.data);
+        // print_dt(dt);
         const long nblocks = integer_product(dt.dim, dt.ndim);
         printf("[");
         for (long k = 0; k < nblocks; k++)
@@ -29,13 +45,6 @@ void print_bst(struct block_sparse_tensor bst)
     printf("bst=[ndim=%d, dim=(%ld, %ld, %ld)]\n",
            bst.ndim,
            bst.dim_blocks[0], bst.dim_blocks[1], bst.dim_blocks[2]);
-}
-
-void print_dt(struct dense_tensor dt)
-{
-    printf("dt=[ndim=%d, dim=(%ld, %ld, %ld)]\n",
-           dt.ndim,
-           dt.dim[0], dt.dim[1], dt.dim[2]);
 }
 
 // TODO: Maybe remote g_pair and replace with mpo[2]?
@@ -64,102 +73,6 @@ void THCMPO_g_get(const struct g *g, const int i, const int s, struct g_pair **g
     *g_pair = &(g->fake_dict[i + g->N * s]);
 }
 
-void THCMPO_construct_elementary_mpo(const int L, const dcomplex *chi_row, const bool is_creation, struct mpo *mpo)
-{
-    const long d = 2;
-    const qnumber qd[2] = {0, 1};
-
-    mpo->d = d;
-    mpo->nsites = L;
-    mpo->qsite = ct_malloc(d * sizeof(qnumber));
-    memcpy(mpo->qsite, &qd, d * sizeof(qnumber));
-
-    mpo->a = ct_calloc(L, sizeof(struct block_sparse_tensor));
-
-    const enum tensor_axis_direction axis_dir[4] = {TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN, TENSOR_AXIS_IN};
-
-    struct dense_tensor dt;
-
-    // first site. dimensions: 1 x d x d x 2
-    {
-        const long dim[4] = {1, d, d, 2};
-        allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
-
-        if (is_creation)
-        {
-            const qnumber qD[1] = {0};
-            const qnumber qD_next[2] = {0, 1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD_next};
-            const dcomplex data[8] = {1, 0, 0, 0, 0, chi_row[0], -1, 0};
-
-            memcpy(dt.data, &data, 8 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[0]);
-        }
-        else
-        {
-            const qnumber qD[1] = {0};
-            const qnumber qD_next[2] = {0, -1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD_next};
-            const dcomplex data[8] = {1, 0, 0, chi_row[0], 0, 0, -1, 0};
-
-            memcpy(dt.data, &data, 8 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[0]);
-        }
-    }
-
-    // intermediate sites: dimensions: 2 x d x d x 2
-    for (long i = 1; i < L - 1; i++)
-    {
-        const long dim[4] = {2, d, d, 2};
-        allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
-
-        if (is_creation)
-        {
-            const qnumber qD[2] = {0, 1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD};
-            const dcomplex data[16] = {1, 0, 0, 0, 0, chi_row[i], -1, 0, 0, 1, 0, 0, 0, 0, 0, 1};
-            memcpy(dt.data, data, 16 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[i]);
-        }
-        else
-        {
-            const qnumber qD[2] = {0, -1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD};
-            const dcomplex data[16] = {1, 0, 0, chi_row[i], 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1};
-
-            memcpy(dt.data, data, 16 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[i]);
-        }
-    }
-
-    // last site. dimensions: 2 x d x d x 1
-    {
-        const long dim[4] = {2, d, d, 1};
-        allocate_dense_tensor(CT_DOUBLE_COMPLEX, 4, dim, &dt);
-
-        if (is_creation)
-        {
-            const qnumber qD[2] = {0, 1};
-            const qnumber qD_next[1] = {1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD_next};
-            const dcomplex data[8] = {0, 0, chi_row[L - 1], 0, 1, 0, 0, 1};
-
-            memcpy(dt.data, data, 8 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[L - 1]);
-        }
-        else
-        {
-            const qnumber qD[2] = {0, -1};
-            const qnumber qD_next[1] = {-1};
-            const qnumber *qnums[4] = {qD, qd, qd, qD_next};
-            const dcomplex data[8] = {0, chi_row[L - 1], 0, 0, 1, 0, 0, 1};
-
-            memcpy(dt.data, data, 8 * sizeof(dcomplex));
-            dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mpo->a[L - 1]);
-        }
-    }
-}
-
 void THCMPO_interleave_zero(const dcomplex *a, const long n, const long offset, dcomplex **ret)
 {
     *ret = ct_calloc(2 * n, sizeof(dcomplex));
@@ -183,8 +96,8 @@ void THCMPO_g_construct_from_chi(dcomplex **chi, const long N, const long L, str
             struct g_pair *pair;
             THCMPO_g_get(g, i, 0, &pair);
             THCMPO_interleave_zero(chi[i], L / 2, 0, &chi_row);
-            THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
-            THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
+            //THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
+            // THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
         }
 
         // spin down
@@ -192,8 +105,8 @@ void THCMPO_g_construct_from_chi(dcomplex **chi, const long N, const long L, str
             struct g_pair *pair;
             THCMPO_g_get(g, i, 1, &pair);
             THCMPO_interleave_zero(chi[i], L / 2, 1, &chi_row);
-            THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
-            THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
+            // THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
+            // THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
         }
     }
 }
@@ -261,11 +174,9 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
     const dcomplex creation[4] = {0., 0., 1., 0.};     // bosonic creation
     const dcomplex annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
 
-    // first two entries of coeffmap must always be 0 and 1
-	const dcomplex coeffmap[] = { 0, 1 };
+	const dcomplex coeffmap[] = { 0, 1 }; // first two entries must always be 0 and 1
 
-    // graph for MPO construction
-    struct mpo_graph graph;
+    struct mpo_graph graph; // graph for MPO construction
 
     // allocate and set memory for physical quantum numbers
     assembly->d = d;
@@ -292,17 +203,18 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
     // copy coefficents; first 2 entries must always be 0 and 1
     assembly->num_coeffs = 2 + nsites;
-    assembly->coeffmap = ct_malloc(assembly->num_coeffs * sizeof(dcomplex));
+    assembly->coeffmap = ct_calloc(assembly->num_coeffs, sizeof(dcomplex));
     memcpy(assembly->coeffmap, coeffmap, 2 * sizeof(dcomplex));
-    memcpy(assembly->coeffmap + 2, chi_row, nsites * sizeof(dcomplex));
+    memcpy(((dcomplex*)assembly->coeffmap) + 2, chi_row, nsites * sizeof(dcomplex));
 
     // setup MPO graph
     assembly->graph.nsites = nsites;
+    
     assembly->graph.num_edges = ct_malloc(nsites * sizeof(int));
-    assembly->graph.num_verts = ct_malloc(nsites * sizeof(int));
-
-    assembly->graph.verts = ct_malloc((nsites + 1) * sizeof(struct mpo_graph_vertex*));
     assembly->graph.edges = ct_malloc(nsites * sizeof(struct mpo_graph_edge*));
+
+    assembly->graph.num_verts = ct_malloc((nsites + 1) * sizeof(int));
+    assembly->graph.verts = ct_malloc((nsites + 1) * sizeof(struct mpo_graph_vertex*));
 
     {
         // left-most site
@@ -311,6 +223,7 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
         // (v0)
         assembly->graph.verts[0] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.verts[0]->qnum = 0;
         assembly->graph.num_verts[0] = 1;
         
         // (e0, e1)
@@ -320,6 +233,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         // (v1, v2)
         assembly->graph.verts[1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[1] = 2;
+        assembly->graph.verts[1][0].qnum = 0;
+        assembly->graph.verts[1][1].qnum = is_creation ? 1 : -1;
         
         // e0
         {
@@ -356,6 +271,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
         assembly->graph.verts[i + 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[i + 1] = 2;
+        assembly->graph.verts[i + 1][0].qnum = 0;
+        assembly->graph.verts[i + 1][1].qnum = is_creation ? 1 : -1;
 
         // v1 -> e2
         //  \ -> e3
@@ -402,6 +319,7 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
         assembly->graph.verts[nsites] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[nsites] = 1;
+        assembly->graph.verts[nsites][0].qnum = is_creation ? 1 : -1;
 
         // v3 -> e5
         // v4 -> e6
@@ -429,6 +347,7 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
     // TODO: Quantum Numbers.
     // TODO: Annihilation operator is probably wrong. Should be 0. See paper.
+    //       Yu probably used the chi_row vector with 0s to achieve this.
     assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
@@ -486,32 +405,30 @@ void construct_computational_basis_mps_2d(
 
 int main()
 {
-    const long N = 28;
-    const long L = 14;
-
-    const dcomplex lst[N][L / 2] = {
-        {1, 2, 3},
-        {4, 5, 6},
-        {7, 8, 9},
-        {10, 11, 12}};
+    const long N = 4;
+    const long L = 6;
 
     dcomplex **chi = ct_malloc(N * sizeof(dcomplex *));
     for (int i = 0; i < N; i++)
     {
-        chi[i] = ct_malloc(L / 2 * sizeof(dcomplex));
-        for (int j = 0; j < L / 2; j++)
+        chi[i] = ct_malloc(L * sizeof(dcomplex));
+        for (int j = 0; j < L; j++)
         {
-            chi[i][j] = 1.3f;
+            chi[i][j] = 33.3;
         }
     }
 
     struct g g;
     // THCMPO_g_construct_from_chi(chi, N, L, &g);
 
+    struct mpo mpo1, mpo2;
     struct mpo_assembly assembly;
     construct_thc_mpo_assembly(L, chi[0], true, &assembly);
+    mpo_from_assembly(&assembly, &mpo1);
     delete_mpo_assembly(&assembly);
 
+    print_mpo(mpo1);
+    assert(mpo_is_consistent(&mpo1));
 
     struct mps psi;
     construct_computational_basis_mps_2d(CT_DOUBLE_COMPLEX, L, 0b11111111110000, &psi);
