@@ -22,11 +22,11 @@ void print_mpo(struct mpo mpo)
         struct dense_tensor dt;
         block_sparse_to_dense_tensor(&mpo.a[i], &dt);
 
-        for(int k = 0; k < mpo.a[i].ndim; k++) {
-            for (int j = 0; j < mpo.a[i].dim_blocks[k]; j++) {
-                printf(" %d ", mpo.a[i].qnums_blocks[k][j]);
-            }
-        }
+        // for(int k = 0; k < mpo.a[i].ndim; k++) {
+        //     for (int j = 0; j < mpo.a[i].dim_blocks[k]; j++) {
+        //         printf(" %d ", mpo.a[i].qnums_blocks[k][j]);
+        //     }
+        // }
 
         dcomplex *data = (dcomplex *)(dt.data);
         // print_dt(dt);
@@ -34,7 +34,7 @@ void print_mpo(struct mpo mpo)
         printf("[");
         for (long k = 0; k < nblocks; k++)
         {
-            printf(" %.2f", creal(data[k]));
+            printf(" %.1f ", creal(data[k]));
         }
         printf("]\n");
     }
@@ -54,97 +54,33 @@ struct g_pair
     struct mpo q;
 };
 
-struct g
+struct gmap
 {
     struct g_pair *fake_dict; // List of MPO pairs accessible like an dictionary with tuple key via get_value(...)
     long N;                   // THC Rank `N`. Length of `fake_dict` is `2N`.
 };
 
-void THCMPO_g_allocate(struct g *g, const long N)
+void allocate_gmap(struct gmap *g, const long N)
 {
     assert(N > 0);
     g->N = N;
     g->fake_dict = ct_malloc(2 * N * sizeof(struct g_pair));
 }
 
-void THCMPO_g_get(const struct g *g, const int i, const int s, struct g_pair **g_pair)
+
+void get_gmap_entry(const struct gmap *g, const int i, const int s, struct g_pair **g_pair)
 {
     assert(i + g->N * s < 2 * g->N);
     *g_pair = &(g->fake_dict[i + g->N * s]);
 }
 
-void THCMPO_interleave_zero(const dcomplex *a, const long n, const long offset, dcomplex **ret)
+
+void interleave_zero(const dcomplex *a, const long n, const long offset, dcomplex **ret)
 {
     *ret = ct_calloc(2 * n, sizeof(dcomplex));
     for (long i = 0; i < n; i++)
     {
         (*ret)[offset + 2 * i] = a[i];
-    }
-}
-
-void THCMPO_g_construct_from_chi(dcomplex **chi, const long N, const long L, struct g *g)
-{
-
-    // chi.shape = (N, L/2)
-    dcomplex *chi_row;
-
-    THCMPO_g_allocate(g, N);
-    for (long i = 0; i < N; i++)
-    {
-        // spin up
-        {
-            struct g_pair *pair;
-            THCMPO_g_get(g, i, 0, &pair);
-            THCMPO_interleave_zero(chi[i], L / 2, 0, &chi_row);
-            //THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
-            // THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
-        }
-
-        // spin down
-        {
-            struct g_pair *pair;
-            THCMPO_g_get(g, i, 1, &pair);
-            THCMPO_interleave_zero(chi[i], L / 2, 1, &chi_row);
-            // THCMPO_construct_elementary_mpo(L, chi_row, false, &pair->p);
-            // THCMPO_construct_elementary_mpo(L, chi_row, true, &pair->q);
-        }
-    }
-}
-
-void THCMPO_calculate_phi(const struct mps *psi, struct g *g, const long N, const double tol, struct mps *phi)
-{
-    const int S = 2; // |{UP, DOWN}| = 2
-    for (long n = 0; n < N; n++)
-    {
-        for (int s1 = 0; s1 < S; s1++)
-        {
-
-            struct mps a;
-            struct mps b;
-            struct g_pair *pair_n_s1;
-            THCMPO_g_get(g, n, s1, &pair_n_s1);
-
-            apply_operator(&pair_n_s1->p, psi, &a);
-            // TODO: Compress
-            apply_operator(&pair_n_s1->q, &a, &b);
-            // TODO: Compress
-
-            for (long m = 0; m < N; m++)
-            {
-                for (int s2 = 0; s2 < S; s2++)
-                {
-                    struct mps c;
-                    struct mps d;
-                    struct g_pair *pair_m_s2;
-                    THCMPO_g_get(g, m, s2, &pair_m_s2);
-
-                    apply_operator(&pair_m_s2->p, &b, &c);
-                    // TODO: Compress
-                    apply_operator(&pair_m_s2->q, &c, &d);
-                    // TODO: Compress
-                }
-            }
-        }
     }
 }
 
@@ -158,6 +94,7 @@ void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], str
     edge->vids[0] = vids[0];
     edge->vids[1] = vids[1];
 }
+
 
 void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const bool is_creation, struct mpo_assembly *assembly)
 {
@@ -223,8 +160,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
         // (v0)
         assembly->graph.verts[0] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
-        assembly->graph.verts[0]->qnum = 0;
         assembly->graph.num_verts[0] = 1;
+        assembly->graph.verts[0]->qnum = 0;
         
         // (e0, e1)
         assembly->graph.edges[0] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
@@ -323,8 +260,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
         // v3 -> e5
         // v4 -> e6
-        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites-1][0]);
-        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites-1][1]);
+        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites - 1][0]);
+        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites - 1][1]);
 
         // e5
         {
@@ -345,17 +282,13 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         }
     }
 
-    // TODO: Quantum Numbers.
     // TODO: Annihilation operator is probably wrong. Should be 0. See paper.
     //       Yu probably used the chi_row vector with 0s to achieve this.
     assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
-void construct_computational_basis_mps_2d(
-    const enum numeric_type dtype,
-    const int nsites,
-    const int basis_state,
-    struct mps *mps)
+
+void construct_computational_basis_mps_2d(const enum numeric_type dtype, const int nsites, const int basis_state, struct mps *mps)
 {
     const long d = 2;
     const qnumber qsite[2] = {0, 1};
@@ -403,10 +336,95 @@ void construct_computational_basis_mps_2d(
     }
 }
 
+
+void construct_gmap(dcomplex **chi, const long N, const long L, struct gmap *g)
+{
+
+    // chi.shape = (N, L/2)
+    dcomplex *chi_row;
+
+    allocate_gmap(g, N);
+    for (long i = 0; i < N; i++)
+    {
+        // spin up
+        {
+            struct g_pair *pair;
+            get_gmap_entry(g, i, 0, &pair);
+            interleave_zero(chi[i], L / 2, 0, &chi_row);
+
+            struct mpo_assembly assembly_p, assembly_q;
+            construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
+            construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
+            
+            
+            mpo_from_assembly(&assembly_p, &pair->p);
+            mpo_from_assembly(&assembly_q, &pair->q);
+            
+            delete_mpo_assembly(&assembly_p);
+            delete_mpo_assembly(&assembly_q);
+        }
+
+        // spin down
+        {
+            struct g_pair *pair;
+            struct mpo_assembly assembly_p, assembly_q;
+            get_gmap_entry(g, i, 1, &pair);
+            interleave_zero(chi[i], L / 2, 1, &chi_row);
+            
+            construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
+            construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
+            
+            mpo_from_assembly(&assembly_p, &pair->p);
+            mpo_from_assembly(&assembly_q, &pair->q);
+            
+            delete_mpo_assembly(&assembly_p);
+            delete_mpo_assembly(&assembly_q);
+        }
+    }
+}
+
+
+void THCMPO_calculate_phi(const struct mps *psi, struct gmap *g, const long N, const double tol, struct mps *phi)
+{
+    const int S = 2; // |{UP, DOWN}| = 2
+    for (long n = 0; n < N; n++)
+    {
+        for (int s1 = 0; s1 < S; s1++)
+        {
+
+            struct mps a;
+            struct mps b;
+            struct g_pair *pair_n_s1;
+            get_gmap_entry(g, n, s1, &pair_n_s1);
+
+            apply_operator(&pair_n_s1->p, psi, &a);
+            // TODO: Compress
+            apply_operator(&pair_n_s1->q, &a, &b);
+            // TODO: Compress
+
+            for (long m = 0; m < N; m++)
+            {
+                for (int s2 = 0; s2 < S; s2++)
+                {
+                    struct mps c;
+                    struct mps d;
+                    struct g_pair *pair_m_s2;
+                    get_gmap_entry(g, m, s2, &pair_m_s2);
+
+                    apply_operator(&pair_m_s2->p, &b, &c);
+                    // TODO: Compress
+                    apply_operator(&pair_m_s2->q, &c, &d);
+                    // TODO: Compress
+                }
+            }
+        }
+    }
+}
+
 int main()
 {
     const long N = 4;
-    const long L = 6;
+    const long L = 3;
 
     dcomplex **chi = ct_malloc(N * sizeof(dcomplex *));
     for (int i = 0; i < N; i++)
@@ -414,43 +432,42 @@ int main()
         chi[i] = ct_malloc(L * sizeof(dcomplex));
         for (int j = 0; j < L; j++)
         {
-            chi[i][j] = 33.3;
+            chi[i][j] = 33.0;
         }
     }
 
-    struct g g;
-    // THCMPO_g_construct_from_chi(chi, N, L, &g);
+    struct gmap gmap;
+    construct_gmap(chi, N, L, &gmap);
+    
+    // const long nblocks = integer_product(dt.dim, dt.ndim);
+    // printf("[");
+    // for (long k = 0; k < nblocks; k++)
+    // {
+    //     printf(" %.2f", creal(data[k]));
+    // }
+    // printf("]\n");
 
-    struct mpo mpo1, mpo2;
-    struct mpo_assembly assembly;
-    construct_thc_mpo_assembly(L, chi[0], true, &assembly);
-    mpo_from_assembly(&assembly, &mpo1);
-    delete_mpo_assembly(&assembly);
+    // struct mps psi;
+    // construct_computational_basis_mps_2d(CT_DOUBLE_COMPLEX, L, 0b11111111110000, &psi);
 
-    print_mpo(mpo1);
-    assert(mpo_is_consistent(&mpo1));
+    // struct dense_tensor dt;
+    // struct block_sparse_tensor bst;
+    // mps_to_statevector(&psi, &bst);
 
-    struct mps psi;
-    construct_computational_basis_mps_2d(CT_DOUBLE_COMPLEX, L, 0b11111111110000, &psi);
+    // block_sparse_to_dense_tensor(&bst, &dt);
 
-    struct dense_tensor dt;
-    struct block_sparse_tensor bst;
-    mps_to_statevector(&psi, &bst);
+    // dcomplex *data = dt.data;
+    // for (int i = 0; i < dt.ndim; i++)
+    // {
+    //     if (i == 16368)
+    //     {
+    //         assert(creal(data[i] == 1.));
+    //     }
+    //     else
+    //     {
+    //         assert(creal(data[i] == 0.));
+    //     }
+    // }
 
-    block_sparse_to_dense_tensor(&bst, &dt);
-
-    dcomplex *data = dt.data;
-    for (int i = 0; i < dt.ndim; i++)
-    {
-        if (i == 16368)
-        {
-            assert(creal(data[i] == 1.));
-        }
-        else
-        {
-            assert(creal(data[i] == 0.));
-        }
-    }
-
-    print_dt(dt);
+    // print_dt(dt);
 }
