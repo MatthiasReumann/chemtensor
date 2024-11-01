@@ -110,8 +110,8 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
     const dcomplex z[4] = {1., 0., 0., -1.};            // Z
     const dcomplex creation[4] = {0., 0., 1., 0.};     // bosonic creation
     const dcomplex annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
-
-	const dcomplex coeffmap[] = { 0, 1 }; // first two entries must always be 0 and 1
+    
+    const dcomplex coeffmap[] = { 0, 1 }; // first two entries must always be 0 and 1
 
     struct mpo_graph graph; // graph for MPO construction
 
