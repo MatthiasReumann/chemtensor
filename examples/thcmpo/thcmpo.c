@@ -290,56 +290,61 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
     assembly->graph.num_edges = ct_malloc(nsites * sizeof(int));
     assembly->graph.num_verts = ct_malloc(nsites * sizeof(int));
 
-    assembly->graph.verts = ct_malloc(nsites * sizeof(struct mpo_graph_vertex*));
+    assembly->graph.verts = ct_malloc((nsites + 1) * sizeof(struct mpo_graph_vertex*));
     assembly->graph.edges = ct_malloc(nsites * sizeof(struct mpo_graph_edge*));
 
     {
-        // left-most vertex
-        // [v0 -e0(I)- ] v1
-        // [ \ -e1(b)- ] v2
+        // left-most site
+        // [v0 -e0(Z)- v1]
+        // [ \ -e1(b)- v2]
 
+        // (v0)
+        assembly->graph.verts[0] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[0] = 1;
+        
+        // (e0, e1)
+        assembly->graph.edges[0] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_edges[0] = 2;
 
-        assembly->graph.verts[0] = ct_malloc(assembly->graph.num_verts[0] * sizeof(struct mpo_graph_vertex));
-        assembly->graph.edges[0] = ct_malloc(assembly->graph.num_edges[0] * sizeof(struct mpo_graph_vertex));
+        // (v1, v2)
+        assembly->graph.verts[1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[1] = 2;
         
-        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[0][0]);
-        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[0][0]);
-
-
         // e0
+        assembly->graph.edges[0][0].nopics = 1;
         assembly->graph.edges[0][0].opics = ct_malloc(sizeof(struct local_op_ref));
         assembly->graph.edges[0][0].opics->oid = OID_Z;
         assembly->graph.edges[0][0].opics->cid = CID_ONE;
-        assembly->graph.edges[0][0].nopics = 1;
         assembly->graph.edges[0][0].vids[0] = 0;
-        assembly->graph.edges[0][0].vids[1] = 1;
+        assembly->graph.edges[0][0].vids[1] = 0;
+        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[0][0]);
 
         // e1
+        assembly->graph.edges[0][1].nopics = 1;
         assembly->graph.edges[0][1].opics = ct_malloc(sizeof(struct local_op_ref));
         assembly->graph.edges[0][1].opics->oid = OID_B;
         assembly->graph.edges[0][1].opics->cid = 2;
-        assembly->graph.edges[0][1].nopics = 1;
         assembly->graph.edges[0][1].vids[0] = 0;
-        assembly->graph.edges[0][1].vids[1] = 2;
+        assembly->graph.edges[0][1].vids[1] = 1;
+        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[0][0]);
+
+        // e0 <- v1
+        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[1][0]);
+
+        // e1 <- v2
+        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[1][1]);
     }
 
     // intermediate sites [2, L-2]
-    // - [ v1  -e2(Z)- ] v3
-    //   [   \ -e3(b)- ] v4
-    // - [ v2  -e4(I)/ ]
+    // v1 [ -e2(Z)- v3]
+    //    [\-e3(b)- v4]
+    // v2 [ -e4(I)/ ]
     for (int i = 1; i < nsites - 1; i++) {
-        assembly->graph.num_verts[i] = 2;
+        assembly->graph.edges[i] = ct_malloc(3 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_edges[i] = 3;
 
-        assembly->graph.verts[i] = ct_malloc(assembly->graph.num_verts[i] * sizeof(struct mpo_graph_vertex));
-        assembly->graph.edges[i] = ct_malloc(assembly->graph.num_edges[i] * sizeof(struct mpo_graph_vertex));
-
-        // e0 -> v1
-        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i][0]);
-        // e1 -> v2
-        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i][1]);
+        assembly->graph.verts[i + 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[i + 1] = 2;
 
         // v1 -> e2
         //  \ -> e3
@@ -348,70 +353,80 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
         
         // v2 -> e4
         mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[i][1]);
-        
+
         // e2
-        assembly->graph.edges[i][0].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[i][0].opics->oid = OID_Id;
-        assembly->graph.edges[i][0].opics->cid = CID_ONE;
         assembly->graph.edges[i][0].nopics = 1;
-        assembly->graph.edges[i][0].vids[0] = i;
-        assembly->graph.edges[i][0].vids[1] = i + 2;
+        assembly->graph.edges[i][0].opics = ct_malloc(sizeof(struct local_op_ref));
+        assembly->graph.edges[i][0].opics->oid = OID_Z;
+        assembly->graph.edges[i][0].opics->cid = CID_ONE;
+        assembly->graph.edges[i][0].vids[0] = 0;
+        assembly->graph.edges[i][0].vids[1] = 0;
 
         // e3
+        assembly->graph.edges[i][1].nopics = 1;
         assembly->graph.edges[i][1].opics = ct_malloc(sizeof(struct local_op_ref));
         assembly->graph.edges[i][1].opics->oid = OID_B;
         assembly->graph.edges[i][1].opics->cid = 2 + i;
-        assembly->graph.edges[i][1].nopics = 1;
-        assembly->graph.edges[i][1].vids[0] = i;
-        assembly->graph.edges[i][1].vids[1] = i + 3;
+        assembly->graph.edges[i][1].vids[0] = 0;
+        assembly->graph.edges[i][1].vids[1] = 1;
 
         // e4
-        assembly->graph.edges[i][2].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[i][2].opics->oid = OID_B;
-        assembly->graph.edges[i][2].opics->cid = 2;
         assembly->graph.edges[i][2].nopics = 1;
-        assembly->graph.edges[i][2].vids[0] = i + 1;
-        assembly->graph.edges[i][2].vids[1] = i + 3;
+        assembly->graph.edges[i][2].opics = ct_malloc(sizeof(struct local_op_ref));
+        assembly->graph.edges[i][2].opics->oid = OID_Id;
+        assembly->graph.edges[i][2].opics->cid = CID_ONE;
+        assembly->graph.edges[i][2].vids[0] = 1;
+        assembly->graph.edges[i][2].vids[1] = 1;
+
+        // e2 <- v3
+        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][0]);
+        // e3 <- v4
+        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i + 1][1]);
+        // e4 <- v4
+        mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[i + 1][1]);
     }
 
     {
-        // right-most vertex
+        // right-most site
         // v3 [ -e5- v5 ]
         // v4 [ -e6-/   ]
-        const int i = nsites - 1;
-
-        assembly->graph.num_verts[nsites - 1] = 1;
+        assembly->graph.edges[nsites - 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_edges[nsites - 1] = 2;
 
-        assembly->graph.verts[nsites - 1] = ct_malloc(
-            assembly->graph.num_verts[nsites - 1] * sizeof(struct mpo_graph_vertex)
-        );
-        assembly->graph.edges[nsites - 1] = ct_malloc(
-            assembly->graph.num_edges[nsites - 1] * sizeof(struct mpo_graph_vertex)
-        );
+        assembly->graph.verts[nsites] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[nsites] = 1;
+
+        // v3 -> e5
+        // v4 -> e6
+        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites-1][0]);
+        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites-1][1]);
 
         // e5
+        assembly->graph.edges[nsites - 1][0].nopics = 1;
         assembly->graph.edges[nsites - 1][0].opics = ct_malloc(sizeof(struct local_op_ref));
         assembly->graph.edges[nsites - 1][0].opics->oid = OID_B;
-        assembly->graph.edges[nsites - 1][0].opics->cid = 2 + i;
-        assembly->graph.edges[nsites - 1][0].nopics = 1;
-        assembly->graph.edges[nsites - 1][0].vids[0] = i;
-        assembly->graph.edges[nsites - 1][0].vids[1] = i + 3;
+        assembly->graph.edges[nsites - 1][0].opics->cid = 2 + (nsites - 1);
+        assembly->graph.edges[nsites - 1][0].vids[0] = 0;
+        assembly->graph.edges[nsites - 1][0].vids[1] = 0;
 
         // e6
-        assembly->graph.edges[nsites - 1][1].opics = ct_malloc(sizeof(struct local_op_ref));
-        assembly->graph.edges[nsites - 1][1].opics->oid = OID_B;
-        assembly->graph.edges[nsites - 1][1].opics->cid = 2;
         assembly->graph.edges[nsites - 1][1].nopics = 1;
-        assembly->graph.edges[nsites - 1][1].vids[0] = i + 1;
-        assembly->graph.edges[nsites - 1][1].vids[1] = i + 3;
+        assembly->graph.edges[nsites - 1][1].opics = ct_malloc(sizeof(struct local_op_ref));
+        assembly->graph.edges[nsites - 1][1].opics->oid = OID_Id;
+        assembly->graph.edges[nsites - 1][1].opics->cid = CID_ONE;
+        assembly->graph.edges[nsites - 1][1].vids[0] = 1;
+        assembly->graph.edges[nsites - 1][1].vids[1] = 0;
+
+        // e5 <- v5
+        // e6 <- v5
+        mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[nsites][0]);
+        mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[nsites][0]);
     }
 
     // TODO: Quantum Numbers.
     // TODO: Cleanup.
-    // TODO: Validation.
     // TODO: Annihilation operator is probably wrong. Should be 0. See paper.
-    printf("mpo_graph_is_consistent: %d\n", mpo_graph_is_consistent(&assembly->graph));
+    assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
 void construct_computational_basis_mps_2d(
