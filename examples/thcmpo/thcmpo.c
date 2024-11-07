@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include "mps.h"
 #include "mpo.h"
 #include "operation.h"
@@ -46,13 +47,6 @@ void print_bst(struct block_sparse_tensor bst)
            bst.ndim,
            bst.dim_blocks[0], bst.dim_blocks[1], bst.dim_blocks[2]);
 }
-
-// TODO: Maybe remote g_pair and replace with mpo[2]?
-struct g_pair
-{
-    struct mpo p;
-    struct mpo q;
-};
 
 struct gmap
 {
@@ -300,8 +294,7 @@ void construct_computational_basis_mps_2d(const enum numeric_type dtype, const i
     const int ndim = 3;
     const long dim[3] = {1, d, 1};
 
-    const enum tensor_axis_direction axis_dir[3] = {
-        TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN};
+    const enum tensor_axis_direction axis_dir[3] = { TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN };
 
     int acc = 0;
 
@@ -384,12 +377,24 @@ void construct_gmap(dcomplex **chi, const long N, const long L, struct gmap *g)
     }
 }
 
+
 void contract_layer(const struct mps *psi, const struct mpo *mpo, const double tol, const long max_vdim, struct mps *ret) 
 {
     double norm;
     double scale;
     struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-    apply_operator(mpo, psi, ret); // a = p10@psi
+    apply_operator(mpo, psi, ret);
+    mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
+
+    ct_free(info);
+}
+
+void add_partial(const struct mps *phi, const struct mps *psi, const double tol, const long max_vdim, struct mps *ret)
+{
+    double norm;
+    double scale;
+    struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+    mps_add(phi, psi, ret);
     mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
 
     ct_free(info);
@@ -399,6 +404,10 @@ void contract_layer(const struct mps *psi, const struct mpo *mpo, const double t
 void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
     const int S = 2; // |{UP, DOWN}| = 2
+
+    clock_t start;
+    clock_t end; 
+    double total_time;
     
     for (size_t n = 0; n < N; n++) {
         for (size_t s1 = 0; s1 < S; s1++) {
@@ -422,18 +431,21 @@ void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta
                     // TODO: zeta[m, n]
 
                     contract_layer(&b, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
-                    contract_layer(&c, &pair2[0], tol, max_vdim, &d); // d = compress(p21@c)
+                    contract_layer(&c, &pair2[1], tol, max_vdim, &d); // d = compress(p21@c)
 
                     if (n == 0 && s1 == 0 && m == 0 && s2 == 0) {
                         *phi = d;
                         delete_mps(&c);
                     } else {
                         struct mps new_phi;
-                        mps_add(phi, &d, &new_phi);
-                        *phi = new_phi;
 
+                        add_partial(phi, &d, tol, max_vdim, &new_phi);
+                        
+                        delete_mps(phi);
                         delete_mps(&c);
                         delete_mps(&d);
+
+                        *phi = new_phi;
                     }
                 }
             }
@@ -446,33 +458,49 @@ void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta
 
 int main()
 {
-    const long N = 20;
-    const long L = 3;
+    const long N = 28;
+    const long L = 14;
 
     // χ
+    clock_t start;
+    clock_t end; 
+    double total_time;
+
+    start = clock();
     dcomplex **chi = ct_malloc(N * sizeof(dcomplex *));
     for (int i = 0; i < N; i++)
     {
         chi[i] = ct_malloc(L * sizeof(dcomplex));
         for (int j = 0; j < L; j++)
         {
-            chi[i][j] = 33.0;
+            chi[i][j] = 1.0;
         }
     }
+    end = clock();
+    total_time = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("Execution time (Setup): %.6f seconds\n", total_time);
 
     // G_{nu, sigma}
     struct gmap gmap;
+    start = clock();
     construct_gmap(chi, N, L, &gmap);
+    end = clock();
+    total_time = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("Execution time (GMAP): %.6f seconds\n", total_time);
 
     // hartree fock state
     struct mps psi;
     construct_computational_basis_mps_2d(CT_DOUBLE_COMPLEX, L, 0b11111111110000, &psi);
 
-    printf("phi[nsites=%d, d=%ld, is_cons=%d]\n", psi.nsites, psi.d, mps_is_consistent(&psi));
+    printf("psi[nsites=%d, d=%ld, is_cons=%d]\n", psi.nsites, psi.d, mps_is_consistent(&psi));
 
     // phi
     struct mps phi;
-    compute_phi(&psi, &gmap, NULL, N, 1e-3, 75, &phi);
+    start = clock();
+    compute_phi(&psi, &gmap, NULL, N, 1e-3, 1024, &phi);
+    end = clock();
+    total_time = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("Execution time (compute phi): %.6f seconds\n", total_time);
 
     printf("phi[nsites=%d, d=%ld, is_cons=%d]\n", phi.nsites, phi.d, mps_is_consistent(&phi));
 }
