@@ -97,7 +97,18 @@ void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], str
     edge->vids[1] = vids[1];
 }
 
-
+///             ╭ for s in [2, L-1]  ╮
+///             ┊       ┌────┐       ┊
+///             ┊   ┌───│ Z  │────┐  ┊
+///      ┌────┐ ┊   │   └────┘    │  ┊ ┌────┐
+///  ┌───│ Z  │────● 0         0 ●─────│ χb │────┐
+///  │   └────┘ ┊   │   ┌────┐       ┊ └────┘    │
+///  ● 0        ┊   └───│ χb │────┐  ┊           ● 0 
+///  │   ┌────┐ ┊       └────┘    │  ┊ ┌────┐    │
+///  └───│ χb │────● 1  ┌────┐  1 ●────│ I  │────┘
+///      └────┘ ┊  └────│ I  │────┘  ┊ └────┘
+///             ┊       └────┘       ┊
+///             ╰                    ╯
 void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const bool is_creation, struct mpo_assembly *assembly)
 {
     // physical quantum numbers (particle number)
@@ -422,6 +433,7 @@ void copy_mps(const struct mps *mps, struct mps* ret)
     }
 }
 
+
 void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
     const int S = 2; // |{UP, DOWN}| = 2
@@ -468,7 +480,6 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                         
                         delete_mps(phi);
                         delete_mps(&d);
-
 
                         *phi = new_phi;
                     }
@@ -541,7 +552,7 @@ int main()
 
     // χ
     struct dense_tensor chi;
-    const long chi_dim[2] = { N, L / 2 };
+    const long chi_dim[2] = { N, L / 2 }; // #spin_orbitals = L / 2
     allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
 
     read_data((double*)zeta.data, (double*)chi.data);
@@ -553,12 +564,14 @@ int main()
     // hartree fock state
     struct mps psi;
     construct_computational_basis_mps_2d(L, 0b11111111110000, &psi);
-    printf("psi[nsites=%d, d=%ld, is_cons=%d]\n", psi.nsites, psi.d, mps_is_consistent(&psi));
 
     // phi
     struct mps phi;
+    clock_t start = clock();
     compute_phi(&psi, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
-    printf("phi[nsites=%d, d=%ld, is_cons=%d]\n", phi.nsites, phi.d, mps_is_consistent(&phi));
+    clock_t end = clock();
+    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("compute_phi[duration]=%fs\n", time_spent);
 
     validate(&phi);
 
