@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
 #include "mps.h"
 #include "mpo.h"
@@ -7,7 +8,7 @@
 
 void print_dt(struct dense_tensor dt)
 {
-    printf("dt=[ndim=%d, dim=(", dt.ndim);
+    printf("dt=[dtype=%d, ndim=%d, dim=(", dt.dtype, dt.ndim);
     for(int i = 0; i < dt.ndim; i++) {
         printf(" %ld ", dt.dim[i]);
     }
@@ -409,6 +410,18 @@ void add_partial(const struct mps *phi, const struct mps *psi, const double tol,
 }
 
 
+void copy_mps(const struct mps *mps, struct mps* ret)
+{
+    ret->d = mps->d;
+    ret->nsites = mps->nsites;
+    ret->qsite = ct_malloc(mps->nsites * sizeof(qnumber));
+    ret->a = ct_malloc(mps->nsites * sizeof(struct block_sparse_tensor));
+    for (size_t i = 0; i < mps->nsites; i++) {
+        ret->qsite[i] = mps->qsite[i]; 
+        copy_block_sparse_tensor(&mps->a[i], &ret->a[i]);
+    }
+}
+
 void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
     const int S = 2; // |{UP, DOWN}| = 2
@@ -436,24 +449,26 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                     const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
                     alpha = 0.5 * ((double*)zeta.data)[offset];
 
-                    memcpy((void*)&b_copy, (void*)&b, sizeof(struct mps));
+                    copy_mps(&b, &b_copy);
                     scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
 
                     get_gmap_pair(gmap, m, s2, &pair2);
-                    contract_layer(&b, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
+                    contract_layer(&b_copy, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
                     contract_layer(&c, &pair2[1], tol, max_vdim, &d); // d = compress(p21@c)
-
+                    
+                    delete_mps(&c);
+                    delete_mps(&b_copy);
+                    
                     if (n == 0 && s1 == 0 && m == 0 && s2 == 0) {
                         *phi = d;
-                        delete_mps(&c);
                     } else {
                         struct mps new_phi;
 
                         add_partial(phi, &d, tol, max_vdim, &new_phi);
                         
                         delete_mps(phi);
-                        delete_mps(&c);
                         delete_mps(&d);
+
 
                         *phi = new_phi;
                     }
@@ -469,7 +484,7 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
 
 void read_data(double* zeta, double *chi)
 {
-    hid_t file = H5Fopen("../examples/thcmpo/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t file = H5Fopen("../examples/thcmpo/data/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file < 0) {
 		printf("'H5Fopen' failed\n");
 	}
@@ -484,12 +499,40 @@ void read_data(double* zeta, double *chi)
 }
 
 
+void read_validation_vector(double *phi)
+{
+    hid_t file = H5Fopen("../examples/thcmpo/data/validation.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+	if (file < 0) {
+		printf("'H5Fopen' failed\n");
+	}
+
+    if (read_hdf5_dataset(file, "phi", H5T_NATIVE_DOUBLE, phi) < 0) {
+        printf("can not read zeta\n");
+    }
+}
+
+
+void validate(struct mps *phi) 
+{
+    struct block_sparse_tensor phi_comp_bst;
+    struct dense_tensor phi_comp;
+    struct dense_tensor phi_val;
+    
+    const long phi_dim[3] = { 1, 16384, 1 };
+    allocate_dense_tensor(CT_DOUBLE_REAL, 3, phi_dim, &phi_val);
+    read_validation_vector((double*)phi_val.data);
+
+    mps_to_statevector(phi, &phi_comp_bst);
+    block_sparse_to_dense_tensor(&phi_comp_bst, &phi_comp);
+
+    assert(dense_tensor_allclose(&phi_val, &phi_comp, 1e-13));
+}
+
+
 int main()
 {
     const long N = 28;
     const long L = 14;
-
-    // TODO: Correctness; Check equality of python and C impl.
 
     // ζ
     struct dense_tensor zeta;
@@ -514,8 +557,10 @@ int main()
 
     // phi
     struct mps phi;
-    compute_phi(&psi, &gmap, zeta, N, 1e-3, 2048, &phi);
+    compute_phi(&psi, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
     printf("phi[nsites=%d, d=%ld, is_cons=%d]\n", phi.nsites, phi.d, mps_is_consistent(&phi));
+
+    validate(&phi);
 
     delete_mps(&psi);
     delete_mps(&phi);
