@@ -14,6 +14,7 @@ void print_dt(struct dense_tensor dt)
     printf(")]\n");
 }
 
+
 void print_mpo(struct mpo mpo)
 {
     printf("MPO: L=%d, d=%ld, qsite=(%d, %d)\n", mpo.nsites, mpo.d, mpo.qsite[0], mpo.qsite[1]);
@@ -29,17 +30,18 @@ void print_mpo(struct mpo mpo)
         //     }
         // }
 
-        dcomplex *data = (dcomplex *)(dt.data);
+        double *data = (double *)(dt.data);
         // print_dt(dt);
         const long nblocks = integer_product(dt.dim, dt.ndim);
         printf("[");
         for (long k = 0; k < nblocks; k++)
         {
-            printf(" %.1f ", creal(data[k]));
+            printf(" %.1f ", data[k]);
         }
         printf("]\n");
     }
 }
+
 
 void print_bst(struct block_sparse_tensor bst)
 {
@@ -48,11 +50,13 @@ void print_bst(struct block_sparse_tensor bst)
            bst.dim_blocks[0], bst.dim_blocks[1], bst.dim_blocks[2]);
 }
 
+
 struct gmap
 {
     struct mpo **data;    // List of MPO pairs accessible like an dictionary with tuple key via get_value(...)
     long N;                 // THC Rank `N`. Length of `data` is `2N`
 };
+
 
 void allocate_gmap(struct gmap *g, const long N)
 {
@@ -72,9 +76,9 @@ void get_gmap_pair(const struct gmap *g, const int i, const int s, struct mpo **
 }
 
 
-void interleave_zero(const dcomplex *a, const long n, const long offset, dcomplex **ret)
+void interleave_zero(const double *a, const long n, const long offset, double **ret)
 {
-    *ret = ct_calloc(2 * n, sizeof(dcomplex));
+    *ret = ct_calloc(2 * n, sizeof(double));
     for (size_t i = 0; i < n; i++)
     {
         (*ret)[offset + 2 * i] = a[i];
@@ -93,7 +97,7 @@ void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], str
 }
 
 
-void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const bool is_creation, struct mpo_assembly *assembly)
+void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const bool is_creation, struct mpo_assembly *assembly)
 {
     // physical quantum numbers (particle number)
     const long d = 2;
@@ -104,17 +108,17 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
     const int OID_Z = 1;  // Pauli-Z
     const int OID_B = 2;  // bosonic creation or annihilation depending on `is_creation`
 
-    const dcomplex z[4] = {1., 0., 0., -1.};            // Z
-    const dcomplex creation[4] = {0., 0., 1., 0.};     // bosonic creation
-    const dcomplex annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
+    const double z[4] = {1., 0., 0., -1.};            // Z
+    const double creation[4] = {0., 0., 1., 0.};     // bosonic creation
+    const double annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
     
-    const dcomplex coeffmap[] = { 0, 1 }; // first two entries must always be 0 and 1
+    const double coeffmap[] = { 0., 1. }; // first two entries must always be 0 and 1
 
     struct mpo_graph graph; // graph for MPO construction
 
     // allocate and set memory for physical quantum numbers
     assembly->d = d;
-    assembly->dtype = CT_DOUBLE_COMPLEX;
+    assembly->dtype = CT_DOUBLE_REAL;
     assembly->qsite = ct_malloc(assembly->d * sizeof(qnumber));
     memcpy(assembly->qsite, &qsite, d * sizeof(qnumber));
 
@@ -137,9 +141,9 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 
     // copy coefficents; first 2 entries must always be 0 and 1
     assembly->num_coeffs = 2 + nsites;
-    assembly->coeffmap = ct_calloc(assembly->num_coeffs, sizeof(dcomplex));
-    memcpy(assembly->coeffmap, coeffmap, 2 * sizeof(dcomplex));
-    memcpy(((dcomplex*)assembly->coeffmap) + 2, chi_row, nsites * sizeof(dcomplex));
+    assembly->coeffmap = ct_calloc(assembly->num_coeffs, sizeof(double));
+    memcpy(assembly->coeffmap, coeffmap, 2 * sizeof(double));
+    memcpy(((double*)assembly->coeffmap) + 2, chi_row, nsites * sizeof(double));
 
     // setup MPO graph
     assembly->graph.nsites = nsites;
@@ -283,13 +287,13 @@ void construct_thc_mpo_assembly(const int nsites, const dcomplex *chi_row, const
 }
 
 
-void construct_computational_basis_mps_2d(const enum numeric_type dtype, const int nsites, const int basis_state, struct mps *mps)
+void construct_computational_basis_mps_2d(const int nsites, const int basis_state, struct mps *mps)
 {
     const long d = 2;
     const qnumber qsite[2] = {0, 1};
 
-    const dcomplex state_zero[2] = {1, 0};
-    const dcomplex state_one[2] = {0, 1};
+    const double state_zero[2] = {1, 0};
+    const double state_one[2] = {0, 1};
 
     const int ndim = 3;
     const long dim[3] = {1, d, 1};
@@ -308,15 +312,15 @@ void construct_computational_basis_mps_2d(const enum numeric_type dtype, const i
         const int ith = ((basis_state & (1 << (nsites - i - 1))) >> (nsites - i - 1));
 
         struct dense_tensor dt;
-        allocate_dense_tensor(dtype, ndim, dim, &dt);
+        allocate_dense_tensor(CT_DOUBLE_REAL, ndim, dim, &dt);
 
         if (ith == 0)
         {
-            memcpy(dt.data, &state_zero, 2 * sizeof(dcomplex));
+            memcpy(dt.data, &state_zero, 2 * sizeof(double));
         }
         else if (ith == 1)
         {
-            memcpy(dt.data, &state_one, 2 * sizeof(dcomplex));
+            memcpy(dt.data, &state_one, 2 * sizeof(double));
             acc++;
         }
         qbond_next[0] = acc;
@@ -331,20 +335,21 @@ void construct_computational_basis_mps_2d(const enum numeric_type dtype, const i
 }
 
 
-void construct_gmap(dcomplex **chi, const long N, const long L, struct gmap *g)
+void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct gmap *g)
 {
-    // chi.shape = (N, L/2)
-    dcomplex *chi_row;
-
     allocate_gmap(g, N);
+    
     for (size_t i = 0; i < N; i++)
     {
+        double *chi_row;
         // spin up
         {
             struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
             
-            interleave_zero(chi[i], L / 2, 0, &chi_row);
+            const long index[2] = { i, 0 };
+            const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
+            interleave_zero(&((double*)chi.data)[offset], L / 2, 0, &chi_row);
 
             construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
             construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
@@ -362,7 +367,9 @@ void construct_gmap(dcomplex **chi, const long N, const long L, struct gmap *g)
             struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
             
-            interleave_zero(chi[i], L / 2, 1, &chi_row);
+            const long index[2] = { i, 0 };
+            const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
+            interleave_zero(&((double*)chi.data)[offset], L / 2, 1, &chi_row);
             
             construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
             construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
@@ -389,6 +396,7 @@ void contract_layer(const struct mps *psi, const struct mpo *mpo, const double t
     ct_free(info);
 }
 
+
 void add_partial(const struct mps *phi, const struct mps *psi, const double tol, const long max_vdim, struct mps *ret)
 {
     double norm;
@@ -401,13 +409,9 @@ void add_partial(const struct mps *phi, const struct mps *psi, const double tol,
 }
 
 
-void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
+void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
     const int S = 2; // |{UP, DOWN}| = 2
-
-    clock_t start;
-    clock_t end; 
-    double total_time;
     
     for (size_t n = 0; n < N; n++) {
         for (size_t s1 = 0; s1 < S; s1++) {
@@ -422,14 +426,20 @@ void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta
 
             for (size_t m = 0; m < N; m++) {
                 for (size_t s2 = 0; s2 < S; s2++) {
+                    double alpha;
+                    struct mps b_copy;
                     struct mps c;
                     struct mps d;
                     struct mpo *pair2;
                     
+                    const long index[2] = { m, n };
+                    const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
+                    alpha = 0.5 * ((double*)zeta.data)[offset];
+
+                    memcpy((void*)&b_copy, (void*)&b, sizeof(struct mps));
+                    scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
+
                     get_gmap_pair(gmap, m, s2, &pair2);
-
-                    // TODO: zeta[m, n]
-
                     contract_layer(&b, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
                     contract_layer(&c, &pair2[1], tol, max_vdim, &d); // d = compress(p21@c)
 
@@ -456,51 +466,59 @@ void compute_phi(const struct mps *psi, struct gmap *gmap, const dcomplex **zeta
     }
 }
 
+
+void read_data(double* zeta, double *chi)
+{
+    hid_t file = H5Fopen("../examples/thcmpo/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+	if (file < 0) {
+		printf("'H5Fopen' failed\n");
+	}
+
+    if (read_hdf5_dataset(file, "zeta", H5T_NATIVE_DOUBLE, zeta) < 0) {
+        printf("can not read zeta\n");
+	}
+
+    if (read_hdf5_dataset(file, "chi", H5T_NATIVE_DOUBLE, chi) < 0) {
+        printf("can not read chi\n");
+	}
+}
+
+
 int main()
 {
     const long N = 28;
     const long L = 14;
 
-    // χ
-    clock_t start;
-    clock_t end; 
-    double total_time;
+    // TODO: Correctness; Check equality of python and C impl.
 
-    start = clock();
-    dcomplex **chi = ct_malloc(N * sizeof(dcomplex *));
-    for (int i = 0; i < N; i++)
-    {
-        chi[i] = ct_malloc(L * sizeof(dcomplex));
-        for (int j = 0; j < L; j++)
-        {
-            chi[i][j] = 1.0;
-        }
-    }
-    end = clock();
-    total_time = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("Execution time (Setup): %.6f seconds\n", total_time);
+    // ζ
+    struct dense_tensor zeta;
+    const long zeta_dim[2] = { N, N };
+    allocate_dense_tensor(CT_DOUBLE_REAL, 2, zeta_dim, &zeta);
+
+    // χ
+    struct dense_tensor chi;
+    const long chi_dim[2] = { N, L / 2 };
+    allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
+
+    read_data((double*)zeta.data, (double*)chi.data);
 
     // G_{nu, sigma}
     struct gmap gmap;
-    start = clock();
     construct_gmap(chi, N, L, &gmap);
-    end = clock();
-    total_time = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("Execution time (GMAP): %.6f seconds\n", total_time);
 
     // hartree fock state
     struct mps psi;
-    construct_computational_basis_mps_2d(CT_DOUBLE_COMPLEX, L, 0b11111111110000, &psi);
-
+    construct_computational_basis_mps_2d(L, 0b11111111110000, &psi);
     printf("psi[nsites=%d, d=%ld, is_cons=%d]\n", psi.nsites, psi.d, mps_is_consistent(&psi));
 
     // phi
     struct mps phi;
-    start = clock();
-    compute_phi(&psi, &gmap, NULL, N, 1e-3, 1024, &phi);
-    end = clock();
-    total_time = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("Execution time (compute phi): %.6f seconds\n", total_time);
-
+    compute_phi(&psi, &gmap, zeta, N, 1e-3, 2048, &phi);
     printf("phi[nsites=%d, d=%ld, is_cons=%d]\n", phi.nsites, phi.d, mps_is_consistent(&phi));
+
+    delete_mps(&psi);
+    delete_mps(&phi);
+    delete_dense_tensor(&chi);
+    delete_dense_tensor(&zeta);
 }
