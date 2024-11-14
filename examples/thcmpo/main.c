@@ -23,9 +23,9 @@ void read_data(double* zeta, double *chi)
 }
 
 
-void read_validation_vector(double *phi)
+void read_ref_vector(double *phi)
 {
-    hid_t file = H5Fopen("../examples/thcmpo/data/validation.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t file = H5Fopen("../examples/thcmpo/data/ref.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file < 0) {
 		printf("'H5Fopen' failed\n");
 	}
@@ -44,7 +44,7 @@ void validate(struct mps *phi)
     
     const long phi_dim[3] = { 1, 16384, 1 };
     allocate_dense_tensor(CT_DOUBLE_REAL, 3, phi_dim, &phi_val);
-    read_validation_vector((double*)phi_val.data);
+    read_ref_vector((double*)phi_val.data);
 
     mps_to_statevector(phi, &phi_comp_bst);
     block_sparse_to_dense_tensor(&phi_comp_bst, &phi_comp);

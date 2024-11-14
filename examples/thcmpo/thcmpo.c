@@ -3,7 +3,7 @@
 #include <time.h>
 #include "mps.h"
 #include "mpo.h"
-#include "operation.h"
+#include "chain_ops.h"
 #include "aligned_memory.h"
 
 #include "gmap.h"
@@ -334,7 +334,7 @@ void contract_layer(const struct mps *psi, const struct mpo *mpo, const double t
     double norm;
     double scale;
     struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-    apply_operator(mpo, psi, ret);
+    apply_mpo(mpo, psi, ret);
     mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
 
     ct_free(info);
