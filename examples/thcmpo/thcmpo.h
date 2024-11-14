@@ -8,6 +8,8 @@ void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], str
 
 void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const bool is_creation, struct mpo_assembly *assembly);
 
+void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, struct mpo_assembly *assembly);
+
 void interleave_zero(const double *a, const long n, const long offset, double **ret);
 
 void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct gmap *g);

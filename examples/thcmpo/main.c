@@ -70,6 +70,9 @@ int main()
 
     read_data((double*)zeta.data, (double*)chi.data);
 
+    struct mpo_assembly assembly;
+    construct_thc_mpo_assembly_4d(L, &((double *)chi.data)[0], &assembly);
+
     // G_{nu, sigma}
     struct gmap gmap;
     construct_gmap(chi, N, L, &gmap);
@@ -97,16 +100,16 @@ int main()
     }
 
     // phi
-    struct mps phi;
-    clock_t start = clock();
-    compute_phi(&psi, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
-    clock_t end = clock();
-    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("compute_phi[duration]=%fs\n", time_spent);
+    // struct mps phi;
+    // clock_t start = clock();
+    // compute_phi(&psi, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
+    // clock_t end = clock();
+    // double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+    // printf("compute_phi[duration]=%fs\n", time_spent);
 
-    validate(&phi);
+    // validate(&phi);
 
-    delete_mps(&phi);
+    // delete_mps(&phi);
     delete_mps(&psi4);
     delete_mps(&psi);
     delete_dense_tensor(&chi);
