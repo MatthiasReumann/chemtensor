@@ -6,85 +6,7 @@
 #include "operation.h"
 #include "aligned_memory.h"
 
-void print_dt(struct dense_tensor dt)
-{
-    printf("dt=[dtype=%d, ndim=%d, dim=(", dt.dtype, dt.ndim);
-    for(int i = 0; i < dt.ndim; i++) {
-        printf(" %ld ", dt.dim[i]);
-    }
-    printf(")]\n");
-}
-
-
-void print_mpo(struct mpo mpo)
-{
-    printf("MPO: L=%d, d=%ld, qsite=(%d, %d)\n", mpo.nsites, mpo.d, mpo.qsite[0], mpo.qsite[1]);
-
-    for (int i = 0; i < mpo.nsites; i++)
-    {
-        struct dense_tensor dt;
-        block_sparse_to_dense_tensor(&mpo.a[i], &dt);
-
-        // for(int k = 0; k < mpo.a[i].ndim; k++) {
-        //     for (int j = 0; j < mpo.a[i].dim_blocks[k]; j++) {
-        //         printf(" %d ", mpo.a[i].qnums_blocks[k][j]);
-        //     }
-        // }
-
-        double *data = (double *)(dt.data);
-        // print_dt(dt);
-        const long nblocks = integer_product(dt.dim, dt.ndim);
-        printf("[");
-        for (long k = 0; k < nblocks; k++)
-        {
-            printf(" %.1f ", data[k]);
-        }
-        printf("]\n");
-    }
-}
-
-
-void print_bst(struct block_sparse_tensor bst)
-{
-    printf("bst=[ndim=%d, dim=(%ld, %ld, %ld)]\n",
-           bst.ndim,
-           bst.dim_blocks[0], bst.dim_blocks[1], bst.dim_blocks[2]);
-}
-
-
-struct gmap
-{
-    struct mpo **data;    // List of MPO pairs accessible like an dictionary with tuple key via get_value(...)
-    long N;                 // THC Rank `N`. Length of `data` is `2N`
-};
-
-
-void allocate_gmap(struct gmap *g, const long N)
-{
-    assert(N > 0);
-    g->N = N;
-    g->data = ct_malloc(2 * N * sizeof(struct mpo*));
-    for(size_t i = 0; i < 2 * N; i++) {
-        g->data[i] = ct_malloc(2 * sizeof(struct mpo));
-    }
-}
-
-
-void get_gmap_pair(const struct gmap *g, const int i, const int s, struct mpo **pair)
-{
-    assert(i + g->N * s < 2 * g->N);
-    *(pair) = g->data[i + g->N * s];
-}
-
-
-void interleave_zero(const double *a, const long n, const long offset, double **ret)
-{
-    *ret = ct_calloc(2 * n, sizeof(double));
-    for (size_t i = 0; i < n; i++)
-    {
-        (*ret)[offset + 2 * i] = a[i];
-    }
-}
+#include "gmap.h"
 
 
 void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], struct mpo_graph_edge* edge) 
@@ -347,6 +269,16 @@ void construct_computational_basis_mps_2d(const int nsites, const int basis_stat
 }
 
 
+void interleave_zero(const double *a, const long n, const long offset, double **ret)
+{
+    *ret = ct_calloc(2 * n, sizeof(double));
+    for (size_t i = 0; i < n; i++)
+    {
+        (*ret)[offset + 2 * i] = a[i];
+    }
+}
+
+
 void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct gmap *g)
 {
     allocate_gmap(g, N);
@@ -490,93 +422,4 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
             delete_mps(&b);
         }
     }
-}
-
-
-void read_data(double* zeta, double *chi)
-{
-    hid_t file = H5Fopen("../examples/thcmpo/data/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
-	if (file < 0) {
-		printf("'H5Fopen' failed\n");
-	}
-
-    if (read_hdf5_dataset(file, "zeta", H5T_NATIVE_DOUBLE, zeta) < 0) {
-        printf("can not read zeta\n");
-	}
-
-    if (read_hdf5_dataset(file, "chi", H5T_NATIVE_DOUBLE, chi) < 0) {
-        printf("can not read chi\n");
-	}
-}
-
-
-void read_validation_vector(double *phi)
-{
-    hid_t file = H5Fopen("../examples/thcmpo/data/validation.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
-	if (file < 0) {
-		printf("'H5Fopen' failed\n");
-	}
-
-    if (read_hdf5_dataset(file, "phi", H5T_NATIVE_DOUBLE, phi) < 0) {
-        printf("can not read zeta\n");
-    }
-}
-
-
-void validate(struct mps *phi) 
-{
-    struct block_sparse_tensor phi_comp_bst;
-    struct dense_tensor phi_comp;
-    struct dense_tensor phi_val;
-    
-    const long phi_dim[3] = { 1, 16384, 1 };
-    allocate_dense_tensor(CT_DOUBLE_REAL, 3, phi_dim, &phi_val);
-    read_validation_vector((double*)phi_val.data);
-
-    mps_to_statevector(phi, &phi_comp_bst);
-    block_sparse_to_dense_tensor(&phi_comp_bst, &phi_comp);
-
-    assert(dense_tensor_allclose(&phi_val, &phi_comp, 1e-13));
-}
-
-
-int main()
-{
-    const long N = 28;
-    const long L = 14;
-
-    // ζ
-    struct dense_tensor zeta;
-    const long zeta_dim[2] = { N, N };
-    allocate_dense_tensor(CT_DOUBLE_REAL, 2, zeta_dim, &zeta);
-
-    // χ
-    struct dense_tensor chi;
-    const long chi_dim[2] = { N, L / 2 }; // #spin_orbitals = L / 2
-    allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
-
-    read_data((double*)zeta.data, (double*)chi.data);
-
-    // G_{nu, sigma}
-    struct gmap gmap;
-    construct_gmap(chi, N, L, &gmap);
-
-    // hartree fock state
-    struct mps psi;
-    construct_computational_basis_mps_2d(L, 0b11111111110000, &psi);
-
-    // phi
-    struct mps phi;
-    clock_t start = clock();
-    compute_phi(&psi, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
-    clock_t end = clock();
-    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("compute_phi[duration]=%fs\n", time_spent);
-
-    validate(&phi);
-
-    delete_mps(&psi);
-    delete_mps(&phi);
-    delete_dense_tensor(&chi);
-    delete_dense_tensor(&zeta);
 }

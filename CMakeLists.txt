@@ -28,7 +28,7 @@ target_include_directories(basic_dmrg_fermi_hubbard PRIVATE ${CHEMTENSOR_DIRS} $
 target_link_libraries(     basic_dmrg_fermi_hubbard PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 
 # TODO: Find better solution to build benchmarks and THC-MPO project. Maybe experiments folder?
-add_executable(            thc_mpo ${CHEMTENSOR_SOURCES} "examples/thcmpo/thcmpo.c")
+add_executable(            thc_mpo ${CHEMTENSOR_SOURCES} "examples/thcmpo/utils.c" "examples/thcmpo/gmap.c" "examples/thcmpo/thcmpo.c" "examples/thcmpo/main.c")
 target_include_directories(thc_mpo PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 target_link_libraries(     thc_mpo PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 
