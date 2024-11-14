@@ -221,54 +221,6 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
 }
 
 
-void construct_computational_basis_mps_2d(const int nsites, const int basis_state, struct mps *mps)
-{
-    const long d = 2;
-    const qnumber qsite[2] = {0, 1};
-
-    const double state_zero[2] = {1, 0};
-    const double state_one[2] = {0, 1};
-
-    const int ndim = 3;
-    const long dim[3] = {1, d, 1};
-
-    const enum tensor_axis_direction axis_dir[3] = { TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN };
-
-    int acc = 0;
-
-    qnumber qbond_curr[1] = {acc};
-    qnumber qbond_next[1];
-
-    allocate_empty_mps(nsites, d, qsite, mps);
-
-    for (size_t i = 0; i < nsites; i++)
-    {
-        const int ith = ((basis_state & (1 << (nsites - i - 1))) >> (nsites - i - 1));
-
-        struct dense_tensor dt;
-        allocate_dense_tensor(CT_DOUBLE_REAL, ndim, dim, &dt);
-
-        if (ith == 0)
-        {
-            memcpy(dt.data, &state_zero, 2 * sizeof(double));
-        }
-        else if (ith == 1)
-        {
-            memcpy(dt.data, &state_one, 2 * sizeof(double));
-            acc++;
-        }
-        qbond_next[0] = acc;
-
-        const qnumber *qnums[3] = {qbond_curr, qsite, qbond_next};
-        dense_to_block_sparse_tensor(&dt, axis_dir, qnums, &mps->a[i]);
-
-        delete_dense_tensor(&dt);
-
-        qbond_curr[0] = qbond_next[0];
-    }
-}
-
-
 void interleave_zero(const double *a, const long n, const long offset, double **ret)
 {
     *ret = ct_calloc(2 * n, sizeof(double));
@@ -283,8 +235,7 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
 {
     allocate_gmap(g, N);
     
-    for (size_t i = 0; i < N; i++)
-    {
+    for (size_t i = 0; i < N; i++) {
         double *chi_row;
         // spin up
         {

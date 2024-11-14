@@ -3,6 +3,7 @@
 #include "mps.h"
 #include "mpo.h"
 
+#include "states.h"
 #include "thcmpo.h"
 #include "gmap.h"
 
@@ -75,7 +76,25 @@ int main()
 
     // hartree fock state
     struct mps psi;
-    construct_computational_basis_mps_2d(L, 0b11111111110000, &psi);
+    const unsigned basis_state[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
+    construct_computational_basis_mps(L, basis_state, &psi);
+
+    struct mps psi4;
+    const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
+    construct_spin_basis_mps(7, spin_state, &psi4);
+
+    {
+        struct block_sparse_tensor bst, bst2;
+        struct dense_tensor dt, dt2;
+        
+        mps_to_statevector(&psi, &bst);
+        block_sparse_to_dense_tensor(&bst, &dt);
+        
+        mps_to_statevector(&psi4, &bst2);
+        block_sparse_to_dense_tensor(&bst2, &dt2);
+
+        assert(dense_tensor_allclose(&dt, &dt2, 1e-3));
+    }
 
     // phi
     struct mps phi;
@@ -87,8 +106,9 @@ int main()
 
     validate(&phi);
 
-    delete_mps(&psi);
     delete_mps(&phi);
+    delete_mps(&psi4);
+    delete_mps(&psi);
     delete_dense_tensor(&chi);
     delete_dense_tensor(&zeta);
 }
