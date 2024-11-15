@@ -333,8 +333,8 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
     // intermediate sites [2, L-2]
     for (size_t i = 1; i < nsites - 1; i++)
     {
-        assembly->graph.edges[i] = ct_malloc(5 * sizeof(struct mpo_graph_vertex));
-        assembly->graph.num_edges[i] = 5;
+        assembly->graph.edges[i] = ct_malloc(6 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_edges[i] = 6;
 
         assembly->graph.verts[i + 1] = ct_malloc(4 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[i + 1] = 4;
@@ -369,19 +369,27 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         }
 
         {
-            const int vids[] = {2, 2};
+            const int vids[] = {1, 3};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][3]);
-            
-            mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[i][2]);
-            mpo_graph_vertex_add_edge(0, 3, &assembly->graph.verts[i + 1][2]);
+
+            mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[i][1]);
+            mpo_graph_vertex_add_edge(0, 3, &assembly->graph.verts[i + 1][3]);
         }
 
         {
-            const int vids[] = {1, 3};
+            const int vids[] = {2, 2};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][4]);
             
-            mpo_graph_vertex_add_edge(1, 4, &assembly->graph.verts[i][3]);
-            mpo_graph_vertex_add_edge(0, 4, &assembly->graph.verts[i + 1][3]);
+            mpo_graph_vertex_add_edge(1, 4, &assembly->graph.verts[i][2]);
+            mpo_graph_vertex_add_edge(0, 4, &assembly->graph.verts[i + 1][2]);
+        }
+
+        {
+            const int vids[] = {3, 3};
+            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][5]);
+            
+            mpo_graph_vertex_add_edge(1, 5, &assembly->graph.verts[i][3]);
+            mpo_graph_vertex_add_edge(0, 5, &assembly->graph.verts[i + 1][3]);
         }
     }
 
@@ -425,7 +433,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         }
     }
 
-    printf("is_cons: %d\n", mpo_graph_is_consistent(&assembly->graph));
+    assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
 void interleave_zero(const double *a, const long n, const long offset, double **ret)

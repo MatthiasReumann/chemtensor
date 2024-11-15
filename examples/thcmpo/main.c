@@ -70,8 +70,18 @@ int main()
 
     read_data((double*)zeta.data, (double*)chi.data);
 
-    struct mpo_assembly assembly;
-    construct_thc_mpo_assembly_4d(L, &((double *)chi.data)[0], &assembly);
+    {
+        struct mpo_assembly assembly;
+        construct_thc_mpo_assembly_4d(L, &((double *)chi.data)[0], &assembly);
+
+        struct mpo mpo;
+        mpo_from_assembly(&assembly, &mpo);
+
+        printf("%d\n", mpo_is_consistent(&mpo));
+
+        delete_mpo(&mpo);
+        delete_mpo_assembly(&assembly);
+    }
 
     // G_{nu, sigma}
     struct gmap gmap;
