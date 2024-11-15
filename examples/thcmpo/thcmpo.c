@@ -6,6 +6,7 @@
 #include "chain_ops.h"
 #include "aligned_memory.h"
 
+#include "utils.h"
 #include "gmap.h"
 
 void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], struct mpo_graph_edge *edge)
@@ -102,7 +103,7 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
         assembly->graph.verts[0]->qnum = 0;
 
         // (e0, e1)
-        assembly->graph.edges[0] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[0] = ct_malloc(2 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[0] = 2;
 
         // (v1, v2)
@@ -142,7 +143,7 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
     // v2 [ -e4(I)/ ]
     for (size_t i = 1; i < nsites - 1; i++)
     {
-        assembly->graph.edges[i] = ct_malloc(3 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[i] = ct_malloc(3 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[i] = 3;
 
         assembly->graph.verts[i + 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
@@ -182,7 +183,7 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
         // right-most site
         // v3 [ -e5- v5 ]
         // v4 [ -e6-/   ]
-        assembly->graph.edges[nsites - 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[nsites - 1] = ct_malloc(2 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[nsites - 1] = 2;
 
         assembly->graph.verts[nsites] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
@@ -216,10 +217,11 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
     assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
-void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, struct mpo_assembly *assembly)
+void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly *assembly)
 {
     // physical quantum numbers (particle number)
     const long d = 4;
+
     const qnumber qsite[] = {
         encode_quantum_number_pair(0, 0),
         encode_quantum_number_pair(1, -1),
@@ -227,10 +229,19 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         encode_quantum_number_pair(2, 0),
     };
 
+    qnumber qeff;
+
+    // W[s, σ] =
+    //  ┌ Z 0 χP  0 ┐
+    //  │ 0 Z  0 χQ │
+    //  │ 0 0  I  0 │
+    //  └ 0 0  0  I ┘
+
     // operator map
-    const int OID_Id = 0; // identity
-    const int OID_Z = 1;  // Pauli-Z
-    const int OID_B = 2;  // bosonic creation or annihilation depending on `is_creation`
+    const int OID_Id = 0;
+    const int OID_Z = 1;
+    const int OID_P = 2;
+    const int OID_Q = 3;
 
     const double z[4] = {1., 0., 0., -1.};           // Z
     const double creation[4] = {0., 0., 1., 0.};     // bosonic creation
@@ -247,7 +258,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
     memcpy(assembly->qsite, &qsite, d * sizeof(qnumber));
 
     // allocate memory for operators
-    assembly->num_local_ops = 3;
+    assembly->num_local_ops = 4;
     assembly->opmap = ct_malloc(assembly->num_local_ops * sizeof(struct dense_tensor));
     for (size_t i = 0; i < assembly->num_local_ops; i++)
     {
@@ -258,7 +269,37 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
     // copy operators into memory
     dense_tensor_set_identity(&assembly->opmap[OID_Id]);
     memcpy(assembly->opmap[OID_Z].data, z, sizeof(z));
-    memcpy(assembly->opmap[OID_B].data, annihilation, sizeof(annihilation));
+
+    if (is_creation)
+    {
+        if (is_spin_up)
+        {
+            memcpy(assembly->opmap[OID_P].data, creation, sizeof(creation));
+            dense_tensor_set_identity(&assembly->opmap[OID_Q]);
+            qeff = qsite[2];
+        }
+        else
+        {
+            memcpy(assembly->opmap[OID_P].data, z, sizeof(z));
+            memcpy(assembly->opmap[OID_Q].data, creation, sizeof(creation));
+            qeff = qsite[1];
+        }
+    }
+    else
+    {
+        if (is_spin_up)
+        {
+            memcpy(assembly->opmap[OID_P].data, annihilation, sizeof(annihilation));
+            dense_tensor_set_identity(&assembly->opmap[OID_Q]);
+            qeff = -qsite[2];
+        }
+        else
+        {
+            memcpy(assembly->opmap[OID_P].data, z, sizeof(z));
+            memcpy(assembly->opmap[OID_Q].data, annihilation, sizeof(annihilation));
+            qeff = -qsite[1];
+        }
+    }
 
     // copy coefficents; first 2 entries must always be 0 and 1
     assembly->num_coeffs = 2 + nsites;
@@ -285,7 +326,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         assembly->graph.verts[0][1].qnum = 0;
 
         // (e0, e1, e2, e3)
-        assembly->graph.edges[0] = ct_malloc(4 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[0] = ct_malloc(4 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[0] = 4;
 
         // (v2, v3, v4, v5)
@@ -294,10 +335,9 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
 
         assembly->graph.verts[1][0].qnum = 0;
         assembly->graph.verts[1][1].qnum = 0;
-        assembly->graph.verts[1][2].qnum = -qsite[2];
-        assembly->graph.verts[1][3].qnum = -qsite[2];
+        assembly->graph.verts[1][2].qnum = qeff;
+        assembly->graph.verts[1][3].qnum = qeff;
 
-        // e0
         {
             const int vids[] = {0, 0};
             construct_thc_mpo_edge(OID_Z, CID_ONE, vids, &assembly->graph.edges[0][0]);
@@ -305,7 +345,6 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
             mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[1][0]); // e0 <- v2
         }
 
-        // e1
         {
             const int vids[] = {1, 1};
             construct_thc_mpo_edge(OID_Z, CID_ONE, vids, &assembly->graph.edges[0][1]);
@@ -313,18 +352,16 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
             mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[1][1]); // e1 <- v3
         }
 
-        // e2
         {
             const int vids[] = {0, 2};
-            construct_thc_mpo_edge(OID_B, CID_ONE, vids, &assembly->graph.edges[0][2]);
+            construct_thc_mpo_edge(OID_P, 2, vids, &assembly->graph.edges[0][2]);
             mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[0][0]); // v0 -> e2
             mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[1][2]); // e2 <- v4
         }
 
-        // e3
         {
             const int vids[] = {1, 3};
-            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[0][3]);
+            construct_thc_mpo_edge(OID_Q, 2, vids, &assembly->graph.edges[0][3]);
             mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[0][1]); // v1 -> e3
             mpo_graph_vertex_add_edge(0, 3, &assembly->graph.verts[1][3]); // e3 <- v5
         }
@@ -333,24 +370,16 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
     // intermediate sites [2, L-2]
     for (size_t i = 1; i < nsites - 1; i++)
     {
-        assembly->graph.edges[i] = ct_malloc(6 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[i] = ct_malloc(6 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[i] = 6;
 
         assembly->graph.verts[i + 1] = ct_malloc(4 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[i + 1] = 4;
-        
+
         assembly->graph.verts[i + 1][0].qnum = 0;
         assembly->graph.verts[i + 1][1].qnum = 0;
-        assembly->graph.verts[i + 1][2].qnum = -qsite[2];
-        assembly->graph.verts[i + 1][3].qnum = -qsite[2];
-
-        {
-            const int vids[] = {0, 2};
-            construct_thc_mpo_edge(OID_B, CID_ONE, vids, &assembly->graph.edges[i][0]);
-
-            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[i][0]);
-            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][2]);
-        }
+        assembly->graph.verts[i + 1][2].qnum = qeff;
+        assembly->graph.verts[i + 1][3].qnum = qeff;
 
         {
             const int vids[] = {0, 0};
@@ -358,6 +387,14 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
 
             mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[i][0]);
             mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i + 1][0]);
+        }
+
+        {
+            const int vids[] = {0, 2};
+            construct_thc_mpo_edge(OID_P, 2 + i, vids, &assembly->graph.edges[i][0]);
+
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[i][0]);
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][2]);
         }
 
         {
@@ -370,7 +407,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
 
         {
             const int vids[] = {1, 3};
-            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][3]);
+            construct_thc_mpo_edge(OID_Q, 2 + i, vids, &assembly->graph.edges[i][3]);
 
             mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[i][1]);
             mpo_graph_vertex_add_edge(0, 3, &assembly->graph.verts[i + 1][3]);
@@ -379,7 +416,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         {
             const int vids[] = {2, 2};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][4]);
-            
+
             mpo_graph_vertex_add_edge(1, 4, &assembly->graph.verts[i][2]);
             mpo_graph_vertex_add_edge(0, 4, &assembly->graph.verts[i + 1][2]);
         }
@@ -387,7 +424,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
         {
             const int vids[] = {3, 3};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[i][5]);
-            
+
             mpo_graph_vertex_add_edge(1, 5, &assembly->graph.verts[i][3]);
             mpo_graph_vertex_add_edge(0, 5, &assembly->graph.verts[i + 1][3]);
         }
@@ -395,41 +432,259 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, stru
 
     // right-most site
     {
-        assembly->graph.edges[nsites - 1] = ct_malloc(4 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.edges[nsites - 1] = ct_malloc(4 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[nsites - 1] = 4;
 
         assembly->graph.verts[nsites] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[nsites] = 2;
-        assembly->graph.verts[nsites][0].qnum = -qsite[2];
-        assembly->graph.verts[nsites][1].qnum = -qsite[2];
-
-        mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites - 1][0]);
-        mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites - 1][1]);
-        mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[nsites - 1][2]);
-        mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[nsites - 1][3]);
+        assembly->graph.verts[nsites][0].qnum = qeff;
+        assembly->graph.verts[nsites][1].qnum = qeff;
 
         {
             const int vids[] = {0, 0};
-            construct_thc_mpo_edge(OID_B, CID_ONE, vids, &assembly->graph.edges[nsites - 1][0]);
+            construct_thc_mpo_edge(OID_P, 2 + (nsites - 1), vids, &assembly->graph.edges[nsites - 1][0]);
+
             mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[nsites][0]);
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites - 1][0]);
         }
 
         {
             const int vids[] = {1, 1};
-            construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[nsites - 1][1]);
+            construct_thc_mpo_edge(OID_Q, 2 + (nsites - 1), vids, &assembly->graph.edges[nsites - 1][1]);
+
             mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[nsites][1]);
+            mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites - 1][1]);
         }
 
         {
             const int vids[] = {2, 0};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[nsites - 1][2]);
+
             mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[nsites][0]);
+            mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[nsites - 1][2]);
         }
 
         {
             const int vids[] = {3, 1};
             construct_thc_mpo_edge(OID_Id, CID_ONE, vids, &assembly->graph.edges[nsites - 1][3]);
+
             mpo_graph_vertex_add_edge(0, 3, &assembly->graph.verts[nsites][1]);
+            mpo_graph_vertex_add_edge(1, 3, &assembly->graph.verts[nsites - 1][3]);
+        }
+    }
+
+    assert(mpo_graph_is_consistent(&assembly->graph));
+}
+
+void construct_thc_mpo_assembly_4d_kron(const int nsites, const double *chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly *assembly)
+{
+    // physical quantum numbers (particle number)
+    const long d = 4;
+
+    const qnumber qsite[] = {
+        encode_quantum_number_pair(0, 0),
+        encode_quantum_number_pair(1, -1),
+        encode_quantum_number_pair(1, 1),
+        encode_quantum_number_pair(2, 0),
+    };
+
+    qnumber qeff;
+
+    // operator map
+    const int OID_I4 = 0;
+    const int OID_ZZ = 1;
+    const int OID_PQ = 2;
+
+    const double coeffmap[] = {0., 1.}; // first two entries must always be 0 and 1
+
+    struct mpo_graph graph; // graph for MPO construction
+
+    // allocate and set memory for physical quantum numbers
+    assembly->d = d;
+    assembly->dtype = CT_DOUBLE_REAL;
+    assembly->qsite = ct_malloc(assembly->d * sizeof(qnumber));
+    memcpy(assembly->qsite, &qsite, d * sizeof(qnumber));
+
+    struct dense_tensor id;
+    {
+        const long dim[2] = {2, 2};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &id);
+        dense_tensor_set_identity(&id);
+    }
+
+    // Pauli-Z matrix required for Jordan-Wigner transformation
+    struct dense_tensor z;
+    {
+        const long dim[2] = {2, 2};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &z);
+        const double data[4] = {1., 0., 0., -1.};
+        memcpy(z.data, data, sizeof(data));
+    }
+
+    // creation and annihilation operators for a single spin and lattice site
+    struct dense_tensor creation;
+    {
+        const long dim[2] = {2, 2};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &creation);
+        const double data[4] = {0., 0., 1., 0.};
+        memcpy(creation.data, data, sizeof(data));
+    }
+
+    struct dense_tensor annihilation;
+    {
+        const long dim[2] = {2, 2};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &annihilation);
+        const double data[4] = {0., 1., 0., 0.};
+        memcpy(annihilation.data, data, sizeof(data));
+    }
+
+    // allocate memory for operators
+    assembly->num_local_ops = 3;
+    assembly->opmap = ct_malloc(assembly->num_local_ops * sizeof(struct dense_tensor));
+    for (size_t i = 0; i < assembly->num_local_ops; i++)
+    {
+        const long dim[2] = {assembly->d, assembly->d};
+        allocate_dense_tensor(assembly->dtype, 2, dim, &assembly->opmap[i]);
+    }
+
+    dense_tensor_kronecker_product(&id, &id, &assembly->opmap[OID_I4]);
+    dense_tensor_kronecker_product(&z, &z, &assembly->opmap[OID_ZZ]);
+
+    if (is_creation)
+    {
+        if (is_spin_up)
+        {
+            dense_tensor_kronecker_product(&creation, &id, &assembly->opmap[OID_PQ]);
+            qeff = qsite[2];
+        }
+        else
+        {
+            dense_tensor_kronecker_product(&z, &creation, &assembly->opmap[OID_PQ]);
+            qeff = qsite[1];
+        }
+    }
+    else
+    {
+        if (is_spin_up)
+        {
+            dense_tensor_kronecker_product(&annihilation, &id, &assembly->opmap[OID_PQ]);
+            qeff = -qsite[2];
+        }
+        else
+        {
+            dense_tensor_kronecker_product(&z, &annihilation, &assembly->opmap[OID_PQ]);
+            qeff = -qsite[1];
+        }
+    }
+
+    // copy coefficents; first 2 entries must always be 0 and 1
+    assembly->num_coeffs = 2 + nsites;
+    assembly->coeffmap = ct_calloc(assembly->num_coeffs, sizeof(double));
+    memcpy(assembly->coeffmap, coeffmap, 2 * sizeof(double));
+    memcpy(((double *)assembly->coeffmap) + 2, chi_row, nsites * sizeof(double));
+
+    // setup MPO graph
+    assembly->graph.nsites = nsites;
+
+    assembly->graph.num_edges = ct_malloc(nsites * sizeof(int));
+    assembly->graph.edges = ct_malloc(nsites * sizeof(struct mpo_graph_edge *));
+
+    assembly->graph.num_verts = ct_malloc((nsites + 1) * sizeof(int));
+    assembly->graph.verts = ct_malloc((nsites + 1) * sizeof(struct mpo_graph_vertex *));
+
+    // left-most site
+    {
+        // v0
+        assembly->graph.verts[0] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[0] = 1;
+        assembly->graph.verts[0]->qnum = 0;
+
+        // (e0, e1)
+        assembly->graph.edges[0] = ct_malloc(2 * sizeof(struct mpo_graph_edge));
+        assembly->graph.num_edges[0] = 2;
+
+        // (v2, v3)
+        assembly->graph.verts[1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[1] = 2;
+
+        assembly->graph.verts[1][0].qnum = 0;
+        assembly->graph.verts[1][1].qnum = qeff;
+
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_ZZ, CID_ONE, vids, &assembly->graph.edges[0][0]);
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[0][0]); // v0 -> e0
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[1][0]); // e0 <- v2
+        }
+
+        {
+            const int vids[] = {0, 1};
+            construct_thc_mpo_edge(OID_PQ, 2, vids, &assembly->graph.edges[0][1]);
+            mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[0][0]); // v1 -> e1
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[1][1]); // e1 <- v3
+        }
+    }
+
+    // intermediate sites [2, L-2]
+    for (size_t i = 1; i < nsites - 1; i++)
+    {
+        assembly->graph.edges[i] = ct_malloc(3 * sizeof(struct mpo_graph_edge));
+        assembly->graph.num_edges[i] = 3;
+
+        assembly->graph.verts[i + 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[i + 1] = 2;
+
+        assembly->graph.verts[i + 1][0].qnum = 0;
+        assembly->graph.verts[i + 1][1].qnum = qeff;
+
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_ZZ, CID_ONE, vids, &assembly->graph.edges[i][0]);
+
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[i][0]);
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[i + 1][0]);
+        }
+
+        {
+            const int vids[] = {0, 1};
+            construct_thc_mpo_edge(OID_PQ, 2 + i, vids, &assembly->graph.edges[i][1]);
+
+            mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[i][0]);
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[i + 1][1]);
+        }
+
+        {
+            const int vids[] = {1, 1};
+            construct_thc_mpo_edge(OID_I4, CID_ONE, vids, &assembly->graph.edges[i][2]);
+
+            mpo_graph_vertex_add_edge(1, 2, &assembly->graph.verts[i][1]);
+            mpo_graph_vertex_add_edge(0, 2, &assembly->graph.verts[i + 1][1]);
+        }
+    }
+
+    // right-most site
+    {
+        assembly->graph.edges[nsites - 1] = ct_malloc(2 * sizeof(struct mpo_graph_edge));
+        assembly->graph.num_edges[nsites - 1] = 2;
+
+        assembly->graph.verts[nsites] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.num_verts[nsites] = 1;
+        assembly->graph.verts[nsites]->qnum = qeff;
+
+        {
+            const int vids[] = {0, 0};
+            construct_thc_mpo_edge(OID_PQ, 2 + (nsites - 1), vids, &assembly->graph.edges[nsites - 1][0]);
+
+            mpo_graph_vertex_add_edge(1, 0, &assembly->graph.verts[nsites - 1][0]);
+            mpo_graph_vertex_add_edge(0, 0, &assembly->graph.verts[nsites][0]);
+        }
+
+        {
+            const int vids[] = {1, 0};
+            construct_thc_mpo_edge(OID_I4, CID_ONE, vids, &assembly->graph.edges[nsites - 1][1]);
+
+            mpo_graph_vertex_add_edge(1, 1, &assembly->graph.verts[nsites - 1][1]);
+            mpo_graph_vertex_add_edge(0, 1, &assembly->graph.verts[nsites][0]);
         }
     }
 
@@ -452,6 +707,7 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
     for (size_t i = 0; i < N; i++)
     {
         double *chi_row;
+        
         // spin up
         {
             struct mpo *pair;
@@ -459,7 +715,7 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
 
             const long index[2] = {i, 0};
             const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
-            interleave_zero(&((double *)chi.data)[offset], L / 2, 0, &chi_row);
+            interleave_zero(&((double *)chi.data)[offset], L, 0, &chi_row);
 
             construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
             construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
@@ -494,18 +750,63 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
     }
 }
 
-void contract_layer(const struct mps *psi, const struct mpo *mpo, const double tol, const long max_vdim, struct mps *ret)
+void construct_gmap_4d(const struct dense_tensor chi, const long N, const long L, struct gmap *g)
+{
+    allocate_gmap(g, N);
+
+    for (size_t i = 0; i < N; i++)
+    {
+        const long index[2] = {i, 0};
+        const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
+        const double *chi_row = &((double *)chi.data)[offset];
+        
+        // spin up
+        {
+            struct mpo *pair;
+            struct mpo_assembly assembly_p, assembly_q;
+
+            construct_thc_mpo_assembly_4d_kron(L, chi_row, false, true, &assembly_p);
+            construct_thc_mpo_assembly_4d_kron(L, chi_row, true, true, &assembly_q);
+
+            get_gmap_pair(g, i, 0, &pair);
+            mpo_from_assembly(&assembly_p, &pair[0]);
+            mpo_from_assembly(&assembly_q, &pair[1]);
+
+            delete_mpo_assembly(&assembly_p);
+            delete_mpo_assembly(&assembly_q);
+        }
+
+        // spin down
+        {
+            struct mpo *pair;
+            struct mpo_assembly assembly_p, assembly_q;
+
+            construct_thc_mpo_assembly_4d_kron(L, chi_row, false, false, &assembly_p);
+            construct_thc_mpo_assembly_4d_kron(L, chi_row, true, false, &assembly_q);
+
+            get_gmap_pair(g, i, 1, &pair);
+            mpo_from_assembly(&assembly_p, &pair[0]);
+            mpo_from_assembly(&assembly_q, &pair[1]);
+
+            delete_mpo_assembly(&assembly_p);
+            delete_mpo_assembly(&assembly_q);
+        }
+    }
+}
+
+void apply_and_compress(const struct mps *psi, const struct mpo *mpo, const double tol, const long max_vdim, struct mps *ret)
 {
     double norm;
     double scale;
     struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
     apply_mpo(mpo, psi, ret);
+
     mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
 
     ct_free(info);
 }
 
-void add_partial(const struct mps *phi, const struct mps *psi, const double tol, const long max_vdim, struct mps *ret)
+void add_and_compress(const struct mps *phi, const struct mps *psi, const double tol, const long max_vdim, struct mps *ret)
 {
     double norm;
     double scale;
@@ -543,8 +844,8 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
 
             get_gmap_pair(gmap, n, s1, &pair);
 
-            contract_layer(psi, &pair[0], tol, max_vdim, &a); // a = compress(p10@psi)
-            contract_layer(&a, &pair[1], tol, max_vdim, &b);  // b = compress(p11@a)
+            apply_and_compress(psi, &pair[0], tol, max_vdim, &a); // a = compress(p10@psi)
+            apply_and_compress(&a, &pair[1], tol, max_vdim, &b);  // b = compress(p11@a)
 
             for (size_t m = 0; m < N; m++)
             {
@@ -564,8 +865,9 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                     scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
 
                     get_gmap_pair(gmap, m, s2, &pair2);
-                    contract_layer(&b_copy, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
-                    contract_layer(&c, &pair2[1], tol, max_vdim, &d);      // d = compress(p21@c)
+
+                    apply_and_compress(&b_copy, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
+                    apply_and_compress(&c, &pair2[1], tol, max_vdim, &d);      // d = compress(p21@c)
 
                     delete_mps(&c);
                     delete_mps(&b_copy);
@@ -578,7 +880,7 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                     {
                         struct mps new_phi;
 
-                        add_partial(phi, &d, tol, max_vdim, &new_phi);
+                        add_and_compress(phi, &d, tol, max_vdim, &new_phi);
 
                         delete_mps(phi);
                         delete_mps(&d);
