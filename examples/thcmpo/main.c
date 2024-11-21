@@ -6,7 +6,6 @@
 #include "utils.h"
 #include "states.h"
 #include "thcmpo.h"
-#include "gmap.h"
 
 void read_data(double *zeta, double *chi)
 {
@@ -75,8 +74,13 @@ int main()
     read_data((double *)zeta.data, (double *)chi.data);
 
     // G_{nu, sigma}
-    struct gmap gmap;
-    construct_gmap_4d(chi, N, L, &gmap);
+    struct mpo **g;
+    g = ct_malloc(2 * N * sizeof(struct mpo *));
+    for (size_t i = 0; i < 2 * N; i++)
+    {
+        g[i] = ct_malloc(2 * sizeof(struct mpo));
+    }
+    construct_gmap_4d(chi, N, L, g);
 
     // struct mps psi;
     // const unsigned basis_state[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
@@ -90,9 +94,9 @@ int main()
     // phi
     struct mps phi;
     clock_t start = clock();
-    
-    compute_phi(&hfs, &gmap, zeta, N, 1e-3, LONG_MAX, &phi);
-    
+
+    compute_phi(&hfs, g, zeta, N, 1e-3, LONG_MAX, &phi);
+
     clock_t end = clock();
     double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
     printf("compute_phi[duration]=%fs\n", time_spent);

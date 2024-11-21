@@ -7,7 +7,6 @@
 #include "aligned_memory.h"
 
 #include "utils.h"
-#include "gmap.h"
 
 void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], struct mpo_graph_edge *edge)
 {
@@ -700,18 +699,23 @@ void interleave_zero(const double *a, const long n, const long offset, double **
     }
 }
 
-void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct gmap *g)
+long index_to_g_offset(const long N, const long i, const long s)
 {
-    allocate_gmap(g, N);
+    assert(i + N * s < 2 * N);
+    return i + N * s;
+}
 
+void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct mpo **g)
+{
     for (size_t i = 0; i < N; i++)
     {
         double *chi_row;
-        
+
         // spin up
         {
-            struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
+
+             const long g_off = index_to_g_offset(N, i, 0);
 
             const long index[2] = {i, 0};
             const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
@@ -720,9 +724,8 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
             construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
             construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
 
-            get_gmap_pair(g, i, 0, &pair);
-            mpo_from_assembly(&assembly_p, &pair[0]);
-            mpo_from_assembly(&assembly_q, &pair[1]);
+            mpo_from_assembly(&assembly_p, &g[g_off][0]);
+            mpo_from_assembly(&assembly_q, &g[g_off][1]);
 
             delete_mpo_assembly(&assembly_p);
             delete_mpo_assembly(&assembly_q);
@@ -730,8 +733,9 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
 
         // spin down
         {
-            struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
+
+            const long g_off = index_to_g_offset(N, i, 1);
 
             const long index[2] = {i, 0};
             const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
@@ -740,9 +744,8 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
             construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
             construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
 
-            get_gmap_pair(g, i, 1, &pair);
-            mpo_from_assembly(&assembly_p, &pair[0]);
-            mpo_from_assembly(&assembly_q, &pair[1]);
+            mpo_from_assembly(&assembly_p, &g[g_off][0]);
+            mpo_from_assembly(&assembly_q, &g[g_off][1]);
 
             delete_mpo_assembly(&assembly_p);
             delete_mpo_assembly(&assembly_q);
@@ -750,27 +753,25 @@ void construct_gmap(const struct dense_tensor chi, const long N, const long L, s
     }
 }
 
-void construct_gmap_4d(const struct dense_tensor chi, const long N, const long L, struct gmap *g)
+void construct_gmap_4d(const struct dense_tensor chi, const long N, const long L, struct mpo **g)
 {
-    allocate_gmap(g, N);
-
     for (size_t i = 0; i < N; i++)
     {
         const long index[2] = {i, 0};
-        const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
-        const double *chi_row = &((double *)chi.data)[offset];
-        
+        const long chi_off = tensor_index_to_offset(chi.ndim, chi.dim, index);
+        const double *chi_row = &((double *)chi.data)[chi_off];
+
         // spin up
         {
-            struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
+
+            const long g_off = index_to_g_offset(N, i, 0);
 
             construct_thc_mpo_assembly_4d_kron(L, chi_row, false, true, &assembly_p);
             construct_thc_mpo_assembly_4d_kron(L, chi_row, true, true, &assembly_q);
 
-            get_gmap_pair(g, i, 0, &pair);
-            mpo_from_assembly(&assembly_p, &pair[0]);
-            mpo_from_assembly(&assembly_q, &pair[1]);
+            mpo_from_assembly(&assembly_p, &g[g_off][0]);
+            mpo_from_assembly(&assembly_q, &g[g_off][1]);
 
             delete_mpo_assembly(&assembly_p);
             delete_mpo_assembly(&assembly_q);
@@ -778,15 +779,15 @@ void construct_gmap_4d(const struct dense_tensor chi, const long N, const long L
 
         // spin down
         {
-            struct mpo *pair;
             struct mpo_assembly assembly_p, assembly_q;
+
+            const long g_off = index_to_g_offset(N, i, 1);
 
             construct_thc_mpo_assembly_4d_kron(L, chi_row, false, false, &assembly_p);
             construct_thc_mpo_assembly_4d_kron(L, chi_row, true, false, &assembly_q);
 
-            get_gmap_pair(g, i, 1, &pair);
-            mpo_from_assembly(&assembly_p, &pair[0]);
-            mpo_from_assembly(&assembly_q, &pair[1]);
+            mpo_from_assembly(&assembly_p, &g[g_off][0]);
+            mpo_from_assembly(&assembly_q, &g[g_off][1]);
 
             delete_mpo_assembly(&assembly_p);
             delete_mpo_assembly(&assembly_q);
@@ -801,6 +802,7 @@ void apply_and_compress(const struct mps *psi, const struct mpo *mpo, const doub
     struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
     apply_mpo(mpo, psi, ret);
 
+    // TODO: Scaling.
     mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
 
     ct_free(info);
@@ -809,10 +811,13 @@ void apply_and_compress(const struct mps *psi, const struct mpo *mpo, const doub
 void add_and_compress(const struct mps *phi, const struct mps *psi, const double tol, const long max_vdim, struct mps *ret)
 {
     double norm;
-    double scale;
+    double scaling;
     struct trunc_info *info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
     mps_add(phi, psi, ret);
-    mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scale, info);
+    mps_compress(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &norm, &scaling, info);
+
+    // TODO: Scaling.
+    // scale_block_sparse_tensor(&scaling, &ret->a[0]);
 
     ct_free(info);
 }
@@ -830,7 +835,7 @@ void copy_mps(const struct mps *mps, struct mps *ret)
     }
 }
 
-void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
+void compute_phi(const struct mps *psi, struct mpo **g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
     const int S = 2; // |{UP, DOWN}| = 2
 
@@ -840,12 +845,11 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
         {
             struct mps a;
             struct mps b;
-            struct mpo *pair;
 
-            get_gmap_pair(gmap, n, s1, &pair);
+            const long g_off = index_to_g_offset(N, n, s1);
 
-            apply_and_compress(psi, &pair[0], tol, max_vdim, &a); // a = compress(p10@psi)
-            apply_and_compress(&a, &pair[1], tol, max_vdim, &b);  // b = compress(p11@a)
+            apply_and_compress(psi, &g[g_off][0], tol, max_vdim, &a); // a = compress(p10@psi)
+            apply_and_compress(&a, &g[g_off][1], tol, max_vdim, &b);  // b = compress(p11@a)
 
             for (size_t m = 0; m < N; m++)
             {
@@ -855,7 +859,6 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                     struct mps b_copy;
                     struct mps c;
                     struct mps d;
-                    struct mpo *pair2;
 
                     const long index[2] = {m, n};
                     const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
@@ -864,10 +867,9 @@ void compute_phi(const struct mps *psi, const struct gmap *gmap, const struct de
                     copy_mps(&b, &b_copy);
                     scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
 
-                    get_gmap_pair(gmap, m, s2, &pair2);
-
-                    apply_and_compress(&b_copy, &pair2[0], tol, max_vdim, &c); // c = compress(p20@b)
-                    apply_and_compress(&c, &pair2[1], tol, max_vdim, &d);      // d = compress(p21@c)
+                    const long g_off2 = index_to_g_offset(N, m, s2);
+                    apply_and_compress(&b_copy, &g[g_off2][0], tol, max_vdim, &c); // c = compress(p20@b)
+                    apply_and_compress(&c, &g[g_off2][1], tol, max_vdim, &d);      // d = compress(p21@c)
 
                     delete_mps(&c);
                     delete_mps(&b_copy);
