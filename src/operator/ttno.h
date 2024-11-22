@@ -24,6 +24,9 @@ struct ttno_assembly
 };
 
 
+void delete_ttno_assembly(struct ttno_assembly* assembly);
+
+
 //________________________________________________________________________________________________________________________
 ///
 /// \brief Tree tensor network operator (TTNO) data structure.
@@ -44,7 +47,11 @@ struct ttno
 
 // allocation and construction
 
+void allocate_ttno(const enum numeric_type dtype, const int nsites_physical, const struct abstract_graph* topology, const long d, const qnumber* qsite, const long* dim_bonds, const qnumber** qbonds, struct ttno* ttno);
+
 void ttno_from_assembly(const struct ttno_assembly* assembly, struct ttno* ttno);
+
+void construct_random_ttno(const enum numeric_type dtype, const int nsites_physical, const struct abstract_graph* topology, const long d, const qnumber* qsite, const long max_vdim, struct rng_state* rng_state, struct ttno* ttno);
 
 void delete_ttno(struct ttno* ttno);
 
