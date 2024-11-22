@@ -2,6 +2,7 @@
 #include <time.h>
 #include "mps.h"
 #include "mpo.h"
+#include "hamiltonian.h"
 
 #include "utils.h"
 #include "states.h"
@@ -9,7 +10,7 @@
 
 void read_data(double *zeta, double *chi)
 {
-    hid_t file = H5Fopen("../examples/thcmpo/data/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t file = H5Fopen("../examples/thcmpo/data/water_chi_zeta.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
     if (file < 0)
     {
         printf("'H5Fopen' failed\n");
@@ -26,52 +27,57 @@ void read_data(double *zeta, double *chi)
     }
 }
 
-void read_ref_vector(double *phi)
+void read_hamiltonian(double *H)
 {
-    hid_t file = H5Fopen("../examples/thcmpo/data/ref4d.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t file = H5Fopen("../examples/thcmpo/data/water_h.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
     if (file < 0)
     {
         printf("'H5Fopen' failed\n");
     }
 
-    if (read_hdf5_dataset(file, "phi", H5T_NATIVE_DOUBLE, phi) < 0)
+    if (read_hdf5_dataset(file, "H", H5T_NATIVE_DOUBLE, H) < 0)
     {
-        printf("can not read zeta\n");
+        printf("can not read H\n");
     }
 }
 
-void validate(struct mps *phi)
+void read_kinetic(double *tkin)
 {
-    struct block_sparse_tensor phi_comp_bst;
-    struct dense_tensor phi_comp;
-    struct dense_tensor phi_val;
+    hid_t file = H5Fopen("../examples/thcmpo/data/water_t.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file < 0)
+    {
+        printf("'H5Fopen' failed\n");
+    }
 
-    const long phi_dim[3] = {1, 16384, 1};
-    allocate_dense_tensor(CT_DOUBLE_REAL, 3, phi_dim, &phi_val);
-    read_ref_vector((double *)phi_val.data);
-
-    mps_to_statevector(phi, &phi_comp_bst);
-    block_sparse_to_dense_tensor(&phi_comp_bst, &phi_comp);
-
-    assert(dense_tensor_allclose(&phi_val, &phi_comp, 1e-13));
+    if (read_hdf5_dataset(file, "T", H5T_NATIVE_DOUBLE, tkin) < 0)
+    {
+        printf("can not read H\n");
+    }
 }
+
 
 int main()
 {
+    // TODO: Create one large hdf5 dataset instead of multiple ones.
+
     const long N = 28;
     const long L = 7;
 
-    // ζ
+    const double TOL = 1e-20;
+    const long MAX_VDIM = LONG_MAX;
+
+    // ζ, χ
     struct dense_tensor zeta;
-    const long zeta_dim[2] = {N, N};
-    allocate_dense_tensor(CT_DOUBLE_REAL, 2, zeta_dim, &zeta);
-
-    // χ
     struct dense_tensor chi;
-    const long chi_dim[2] = {N, L};
-    allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
+    {
+        const long zeta_dim[2] = {N, N};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, zeta_dim, &zeta);
 
-    read_data((double *)zeta.data, (double *)chi.data);
+        const long chi_dim[2] = {N, L};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
+
+        read_data((double *)zeta.data, (double *)chi.data);
+    }
 
     // G_{nu, sigma}
     struct mpo **g;
@@ -80,30 +86,113 @@ int main()
     {
         g[i] = ct_malloc(2 * sizeof(struct mpo));
     }
-    construct_gmap_4d(chi, N, L, g);
+    construct_g_4d(chi, N, L, g);
 
-    // struct mps psi;
-    // const unsigned basis_state[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
-    // construct_computational_basis_mps(L, basis_state, &psi);
+    // water hamiltonian 'H'
+    struct dense_tensor H;
+    {
+        const long dim[2] = {16384, 16384};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &H);
+        read_hamiltonian((double *)H.data);
+    }
+
+    // t_{pq}
+    struct dense_tensor tkin;
+    {
+        const long dim[2] = {L, L};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &tkin);
+        read_kinetic((double *)tkin.data);
+    }
 
     // hartree fock state
     struct mps hfs;
-    const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
-    construct_spin_basis_mps(L, spin_state, &hfs);
+    {
+        const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
+        construct_spin_basis_mps(L, spin_state, &hfs);
+    }
 
-    // phi
-    struct mps phi;
-    clock_t start = clock();
+    // hartree fock as dense tensor ~ vector
+    struct dense_tensor hfs_vec;
+    {
+        struct block_sparse_tensor bst;
+        mps_to_statevector(&hfs, &bst);
+        block_sparse_to_dense_tensor(&bst, &hfs_vec);
+        const long dim[] = {16384};
+        reshape_dense_tensor(1, dim, &hfs_vec);
+        delete_block_sparse_tensor(&bst);
+    }
 
-    compute_phi(&hfs, g, zeta, N, 1e-3, LONG_MAX, &phi);
+    struct dense_tensor h_hfs;
+    {
+        const int i_ax = 1;
+        dense_tensor_multiply_axis(&H, i_ax, &hfs_vec, TENSOR_AXIS_RANGE_LEADING, &h_hfs);
+    }
 
-    clock_t end = clock();
-    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("compute_phi[duration]=%fs\n", time_spent);
+    struct mpo t_mpo;
+    {
+        struct dense_tensor vint;
+        struct mpo_assembly assembly;
+        const long dim[] = {L, L, L, L};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 4, dim, &vint);
+        construct_spin_molecular_hamiltonian_mpo_assembly(&tkin, &vint, false, &assembly);
+        mpo_from_assembly(&assembly, &t_mpo);
+        delete_mpo_assembly(&assembly);
+    }
 
-    validate(&phi);
+    // v|ᴪ>
+    struct mps v_psi;
+    {
+        clock_t start = clock();
+        compute_phi(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi);
+        clock_t end = clock();
 
-    delete_mps(&phi);
+        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+        printf("compute v_psi [duration]=%fs\n", time_spent);
+    }
+
+    // t|ᴪ>
+    struct mps t_psi;
+    {
+        clock_t start = clock();
+        apply_and_compress(&hfs, &t_mpo, TOL, MAX_VDIM, &t_psi);
+        clock_t end = clock();
+
+        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+        printf("compute t_psi [duration]=%fs\n", time_spent);
+    }
+
+    // t|ᴪ> + v|ᴪ>
+    struct mps h_psi;
+    {
+        clock_t start = clock();
+        add_and_compress(&t_psi, &v_psi, TOL, MAX_VDIM, &h_psi);
+        clock_t end = clock();
+
+        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+        printf("compute h_psi [duration]=%fs\n", time_spent);
+    }
+
+    struct dense_tensor h_psi_vec;
+    {
+        struct block_sparse_tensor bst;
+        mps_to_statevector(&h_psi, &bst);
+        block_sparse_to_dense_tensor(&bst, &h_psi_vec);
+        const long dim[] = {16384};
+        reshape_dense_tensor(1, dim, &h_psi_vec);
+        delete_block_sparse_tensor(&bst);
+    }
+
+    printf("norm1: %f\n", dense_tensor_norm2(&h_hfs));
+    printf("norm2: %f\n", dense_tensor_norm2(&h_psi_vec));
+    printf("close: %d\n", dense_tensor_allclose(&h_hfs, &h_psi_vec, 1e-6));
+
+    // teardown
+    delete_mps(&h_psi);
+    delete_mps(&t_psi);
+    delete_mps(&v_psi);
+    delete_mpo(&t_mpo);
+    delete_dense_tensor(&h_hfs);
+    delete_dense_tensor(&hfs_vec);
     delete_mps(&hfs);
     delete_dense_tensor(&chi);
     delete_dense_tensor(&zeta);

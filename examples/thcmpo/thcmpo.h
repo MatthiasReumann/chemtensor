@@ -8,15 +8,13 @@ void construct_thc_mpo_assembly(const int nsites, const double *chi_row, const b
 
 void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly *assembly);
 
-void construct_thc_mpo_assembly_4d_kron(const int nsites, const double *chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly *assembly);
-
 void interleave_zero(const double *a, const long n, const long offset, double **ret);
 
 long index_to_g_offset(const long N, const long i, const long s);
 
-void construct_gmap(const struct dense_tensor chi, const long N, const long L, struct mpo **g);
+void construct_g(const struct dense_tensor chi, const long N, const long L, struct mpo **g);
 
-void construct_gmap_4d(const struct dense_tensor chi, const long N, const long L, struct mpo **g);
+void construct_g_4d(const struct dense_tensor chi, const long N, const long L, struct mpo **g);
 
 void apply_and_compress(const struct mps *psi, const struct mpo *mpo, const double tol, const long max_vdim, struct mps *ret);
 
