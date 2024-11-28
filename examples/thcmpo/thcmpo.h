@@ -22,4 +22,6 @@ void add_and_compress(const struct mps *phi, const struct mps *psi, const double
 
 void copy_mps(const struct mps *mps, struct mps *ret); // TODO: Move to mps.h
 
-void compute_phi(const struct mps *psi, struct mpo **g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi);
+void apply_thc(const struct mps *psi, struct mpo **g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi);
+
+void apply_thc_omp(const struct mps *psi, struct mpo **g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi);

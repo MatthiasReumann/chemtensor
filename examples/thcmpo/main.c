@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <time.h>
+#include <omp.h>
 #include "mps.h"
 #include "mpo.h"
 #include "hamiltonian.h"
@@ -55,10 +56,11 @@ void read_kinetic(double *tkin)
     }
 }
 
-
 int main()
 {
     // TODO: Create one large hdf5 dataset instead of multiple ones.
+
+    omp_set_num_threads(4 * 28 * 28);
 
     const long N = 28;
     const long L = 7;
@@ -106,8 +108,8 @@ int main()
 
     // hartree fock state
     struct mps hfs;
+    const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
     {
-        const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
         construct_spin_basis_mps(L, spin_state, &hfs);
     }
 
@@ -125,7 +127,12 @@ int main()
     struct dense_tensor h_hfs;
     {
         const int i_ax = 1;
+        clock_t start = clock();
         dense_tensor_multiply_axis(&H, i_ax, &hfs_vec, TENSOR_AXIS_RANGE_LEADING, &h_hfs);
+        clock_t end = clock();
+
+        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+        printf("compute exact [duration]=%fs\n", time_spent);
     }
 
     struct mpo t_mpo;
@@ -141,13 +148,27 @@ int main()
 
     // v|ᴪ>
     struct mps v_psi;
+    construct_spin_zero_mps(L, spin_state, &v_psi);
     {
+        
         clock_t start = clock();
-        compute_phi(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi);
+        apply_thc(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi);
         clock_t end = clock();
 
         double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
         printf("compute v_psi [duration]=%fs\n", time_spent);
+    }
+
+    struct mps v_psi_p;
+    construct_spin_zero_mps(L, spin_state, &v_psi_p);
+    {
+        
+        clock_t start = clock();
+        apply_thc_omp(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi_p);
+        clock_t end = clock();
+
+        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+        printf("compute v_psi_p [duration]=%fs\n", time_spent);
     }
 
     // t|ᴪ>
@@ -165,7 +186,7 @@ int main()
     struct mps h_psi;
     {
         clock_t start = clock();
-        add_and_compress(&t_psi, &v_psi, TOL, MAX_VDIM, &h_psi);
+        add_and_compress(&t_psi, &v_psi_p, TOL, MAX_VDIM, &h_psi);
         clock_t end = clock();
 
         double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
@@ -189,6 +210,7 @@ int main()
     // teardown
     delete_mps(&h_psi);
     delete_mps(&t_psi);
+    delete_mps(&v_psi_p);
     delete_mps(&v_psi);
     delete_mpo(&t_mpo);
     delete_dense_tensor(&h_hfs);

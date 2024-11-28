@@ -9,6 +9,7 @@ find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C)
 find_package(Python3 REQUIRED COMPONENTS Development NumPy)
+find_package(OpenMP)
 
 set(CHEMTENSOR_DIRS "src" "src/tensor" "src/state" "src/operator" "src/algorithm" "src/util")
 set(CHEMTENSOR_SOURCES "src/tensor/dense_tensor.c" "src/tensor/block_sparse_tensor.c" "src/tensor/qnumber.c" "src/tensor/clebsch_gordan.c" "src/tensor/su2_recoupling.c" "src/tensor/su2_tree.c" "src/tensor/su2_tensor.c" "src/state/mps.c" "src/state/ttns.c" "src/operator/op_chain.c" "src/operator/local_op.c" "src/operator/mpo_graph.c" "src/operator/mpo.c" "src/operator/ttno_graph.c" "src/operator/ttno.c" "src/operator/hamiltonian.c" "src/algorithm/bond_ops.c" "src/algorithm/chain_ops.c" "src/algorithm/tree_ops.c" "src/algorithm/dmrg.c" "src/algorithm/gradient.c" "src/util/util.c" "src/util/queue.c" "src/util/linked_list.c" "src/util/hash_table.c" "src/util/abstract_graph.c" "src/util/bipartite_graph.c" "src/util/integer_linear_algebra.c" "src/util/krylov.c" "src/util/pcg_basic.c" "src/util/rng.c")
@@ -31,5 +32,8 @@ target_link_libraries(     basic_dmrg_fermi_hubbard PRIVATE ${BLAS_LIBRARIES} ${
 add_executable(            thc_mpo ${CHEMTENSOR_SOURCES} "examples/thcmpo/utils.c" "examples/thcmpo/states.c" "examples/thcmpo/thcmpo.c" "examples/thcmpo/main.c")
 target_include_directories(thc_mpo PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 target_link_libraries(     thc_mpo PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
+if(OpenMP_C_FOUND)
+    target_link_libraries(thc_mpo PUBLIC OpenMP::OpenMP_C)
+endif()
 
 add_test(NAME chemtensor_test COMMAND chemtensor_test)
