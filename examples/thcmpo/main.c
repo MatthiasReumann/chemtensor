@@ -205,7 +205,7 @@ int main()
 
     printf("norm1: %f\n", dense_tensor_norm2(&h_hfs));
     printf("norm2: %f\n", dense_tensor_norm2(&h_psi_vec));
-    printf("close: %d\n", dense_tensor_allclose(&h_hfs, &h_psi_vec, 1e-6));
+    printf("close: %d\n", dense_tensor_allclose(&h_hfs, &h_psi_vec, 1e-8));
 
     // teardown
     delete_mps(&h_psi);

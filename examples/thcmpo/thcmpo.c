@@ -564,7 +564,7 @@ void add_and_compress(const struct mps *phi, const struct mps *psi, const double
     ct_free(info);
 }
 
-void copy_mps(const struct mps *mps, struct mps *ret)
+void mps_deep_copy(const struct mps *mps, struct mps *ret)
 {
     ret->d = mps->d;
     ret->nsites = mps->nsites;
@@ -604,7 +604,7 @@ void apply_thc(const struct mps *psi, struct mpo **g, const struct dense_tensor 
 
                 struct mps b_copy;
                 {
-                    copy_mps(&b, &b_copy);
+                    mps_deep_copy(&b, &b_copy);
                     scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
                 }
 
@@ -641,64 +641,66 @@ void apply_thc(const struct mps *psi, struct mpo **g, const struct dense_tensor 
 
 void mps_add_combiner(struct mps *out, struct mps *in) {
     struct mps ret;
-    add_and_compress(out, in, 1e-20, LONG_MAX, &ret);
+    add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
     *out = ret;
+}
+
+void mps_add_initializer(struct mps *priv, struct mps *orig) {
+    mps_deep_copy(orig, priv);
 }
 
 void apply_thc_omp(const struct mps *psi, struct mpo **g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps *phi)
 {
-    struct mps acc;
-    copy_mps(phi, &acc);
+    struct mps acc = *phi; // openmp reduction requires non-pointer type
 
-    #pragma omp declare reduction(mpsAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) initializer(omp_priv = omp_orig)
+    #pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
+        initializer(mps_add_initializer(&omp_priv, &omp_orig))
 
-    #pragma omp parallel for num_threads(4) collapse(4) reduction(mpsAdd : acc)
+    #pragma omp parallel for num_threads(2) collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
     for (size_t n = 0; n < N; n++) {
         for (size_t s1 = 0; s1 < 2; s1++) {
             for (size_t m = 0; m < N; m++) {
                 for (size_t s2 = 0; s2 < 2; s2++) {
-                    struct mps phi_nxt;
-                    
-                    struct mps G_psi; // ((1/2) * ζ_{μ,ν})(G_{μ, σ}G_{ν, σ'})|ᴪ>
+                    struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
                     {
-                        double alpha;
-                        struct mps a;
                         struct mps b;
-                        struct mps c;
-
-                        // |θ> = G_{ν, σ'}|ᴪ>
                         {
-                            const long g_off = index_to_g_offset(N, n, s1);
-                            apply_and_compress(psi, &g[g_off][0], tol, max_vdim, &a);
-                            apply_and_compress(&a, &g[g_off][1], tol, max_vdim, &b);
+                            // G_{ν, σ'}
+                            struct mps tmp;
+                            const long off = index_to_g_offset(N, n, s1);
+                            apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
+                            apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &b);
+                            delete_mps(&tmp);
                         }
 
-                        // (1/2) * ζ_{μ,ν}
+                        double alpha; // ɑ = .5 * ζ_{μ,ν}
                         {
                             const long index[2] = {m, n};
                             const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
                             alpha = 0.5 * ((double *)zeta.data)[offset];
                         }
 
-                        // |θ> = ((1/2) * ζ_{μ,ν})|θ>
                         scale_block_sparse_tensor(&alpha, &(b.a[0]));
 
-                        // |θ'> = G_{μ, σ}|θ>
                         {
-                            const long g_off = index_to_g_offset(N, m, s2);
-                            apply_and_compress(&b, &g[g_off][0], tol, max_vdim, &c);
-                            apply_and_compress(&c, &g[g_off][1], tol, max_vdim, &G_psi);
+                            // G_{μ, σ}
+                            struct mps tmp;
+                            const long off = index_to_g_offset(N, m, s2);
+                            apply_and_compress(&b, &g[off][0], tol, max_vdim, &tmp);
+                            apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &G_psi);
+                            delete_mps(&tmp);
                         }
 
-                        delete_mps(&c);
                         delete_mps(&b);
-                        delete_mps(&a);
                     }
 
-                    add_and_compress(&acc, &G_psi, tol, max_vdim, &phi_nxt);
+                    struct mps acc_nxt;
+                    add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
+                    delete_mps(&acc); // Delete old acc.
+
+                    acc = acc_nxt;
 
                     delete_mps(&G_psi);
-                    copy_mps(&phi_nxt, &acc);
                 }
             }
         }
