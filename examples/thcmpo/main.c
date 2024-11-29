@@ -56,17 +56,15 @@ void read_kinetic(double *tkin)
     }
 }
 
-int main()
+void water()
 {
-    // TODO: Create one large hdf5 dataset instead of multiple ones.
-
-    omp_set_num_threads(4 * 28 * 28);
-
     const long N = 28;
     const long L = 7;
 
     const double TOL = 1e-20;
     const long MAX_VDIM = LONG_MAX;
+
+    // TODO: Create one large hdf5 dataset instead of multiple ones.
 
     // ζ, χ
     struct dense_tensor zeta;
@@ -90,7 +88,7 @@ int main()
     }
     construct_g_4d(chi, N, L, g);
 
-    // water hamiltonian 'H'
+    // water hamiltonian 'H' 
     struct dense_tensor H;
     {
         const long dim[2] = {16384, 16384};
@@ -127,12 +125,15 @@ int main()
     struct dense_tensor h_hfs;
     {
         const int i_ax = 1;
-        clock_t start = clock();
+        struct timespec start, finish;
+        
+        clock_gettime(CLOCK_MONOTONIC, &start);
         dense_tensor_multiply_axis(&H, i_ax, &hfs_vec, TENSOR_AXIS_RANGE_LEADING, &h_hfs);
-        clock_t end = clock();
+        clock_gettime(CLOCK_MONOTONIC, &finish);
 
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("compute exact [duration]=%fs\n", time_spent);
+        double elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+        printf("H|psi> (exact) [duration]=%fs\n", elapsed);
     }
 
     struct mpo t_mpo;
@@ -148,50 +149,42 @@ int main()
 
     // v|ᴪ>
     struct mps v_psi;
-    construct_spin_zero_mps(L, spin_state, &v_psi);
     {
+        struct timespec start, finish;
         
-        clock_t start = clock();
-        apply_thc(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi);
-        clock_t end = clock();
+        construct_spin_zero_mps(L, spin_state, &v_psi);
 
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("compute v_psi [duration]=%fs\n", time_spent);
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        apply_thc(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi);
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+
+        double elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+        printf("V|psi> (SYN) [duration]=%fs\n", elapsed);
     }
 
     struct mps v_psi_p;
-    construct_spin_zero_mps(L, spin_state, &v_psi_p);
     {
-        
-        clock_t start = clock();
-        apply_thc_omp(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi_p);
-        clock_t end = clock();
+        struct timespec start, finish;
 
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("compute v_psi_p [duration]=%fs\n", time_spent);
+        construct_spin_zero_mps(L, spin_state, &v_psi_p);
+
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        apply_thc_omp(&hfs, g, zeta, N, TOL, MAX_VDIM, &v_psi_p);
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        
+        double elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+        printf("V|psi> (OMP) [duration]=%fs\n", elapsed);
     }
 
     // t|ᴪ>
     struct mps t_psi;
-    {
-        clock_t start = clock();
-        apply_and_compress(&hfs, &t_mpo, TOL, MAX_VDIM, &t_psi);
-        clock_t end = clock();
-
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("compute t_psi [duration]=%fs\n", time_spent);
-    }
+    apply_and_compress(&hfs, &t_mpo, TOL, MAX_VDIM, &t_psi);
 
     // t|ᴪ> + v|ᴪ>
     struct mps h_psi;
-    {
-        clock_t start = clock();
-        add_and_compress(&t_psi, &v_psi_p, TOL, MAX_VDIM, &h_psi);
-        clock_t end = clock();
-
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("compute h_psi [duration]=%fs\n", time_spent);
-    }
+    add_and_compress(&t_psi, &v_psi_p, TOL, MAX_VDIM, &h_psi);
 
     struct dense_tensor h_psi_vec;
     {
@@ -218,4 +211,9 @@ int main()
     delete_mps(&hfs);
     delete_dense_tensor(&chi);
     delete_dense_tensor(&zeta);
+}
+
+int main()
+{
+    water();
 }
