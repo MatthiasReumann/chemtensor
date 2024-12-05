@@ -431,6 +431,11 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
     }
 
     assert(mpo_graph_is_consistent(&assembly->graph));
+
+    delete_dense_tensor(&annihilation);
+    delete_dense_tensor(&creation);
+    delete_dense_tensor(&z);
+    delete_dense_tensor(&id);
 }
 
 void interleave_zero(const double *a, const long n, const long offset, double **ret)
