@@ -254,7 +254,6 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
         dense_tensor_set_identity(&id);
     }
 
-    // Pauli-Z matrix required for Jordan-Wigner transformation
     struct dense_tensor z;
     {
         const long dim[2] = {2, 2};
@@ -263,7 +262,6 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
         memcpy(z.data, data, sizeof(data));
     }
 
-    // creation and annihilation operators for a single spin and lattice site
     struct dense_tensor creation;
     {
         const long dim[2] = {2, 2};
@@ -283,12 +281,6 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
     // allocate memory for operators
     assembly->num_local_ops = 3;
     assembly->opmap = ct_malloc(assembly->num_local_ops * sizeof(struct dense_tensor));
-    for (size_t i = 0; i < assembly->num_local_ops; i++)
-    {
-        const long dim[2] = {assembly->d, assembly->d};
-        allocate_dense_tensor(assembly->dtype, 2, dim, &assembly->opmap[i]);
-    }
-
     dense_tensor_kronecker_product(&id, &id, &assembly->opmap[OID_I4]);
     dense_tensor_kronecker_product(&z, &z, &assembly->opmap[OID_ZZ]);
 
