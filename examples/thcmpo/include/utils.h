@@ -12,3 +12,9 @@ void print_bst(struct block_sparse_tensor bst);
 void print_mpo(struct mpo mpo);
 
 void print_mps(struct mps mps);
+
+void read_data(double *zeta, double *chi);
+
+void read_hamiltonian(double *H);
+
+void read_kinetic(double *tkin);

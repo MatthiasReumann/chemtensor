@@ -656,7 +656,7 @@ void apply_thc_omp(const struct mps *psi, struct mpo **g, const struct dense_ten
     #pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
         initializer(mps_add_initializer(&omp_priv, &omp_orig))
 
-    #pragma omp parallel for num_threads(8) collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
+    #pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
     for (size_t n = 0; n < N; n++) {
         for (size_t s1 = 0; s1 < 2; s1++) {
             for (size_t m = 0; m < N; m++) {

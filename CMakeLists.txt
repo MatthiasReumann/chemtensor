@@ -28,12 +28,21 @@ add_executable(            basic_dmrg_fermi_hubbard ${CHEMTENSOR_SOURCES} "examp
 target_include_directories(basic_dmrg_fermi_hubbard PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 target_link_libraries(     basic_dmrg_fermi_hubbard PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 
-# TODO: Find better solution to build benchmarks and THC-MPO project. Maybe experiments folder?
-add_executable(            thc_mpo ${CHEMTENSOR_SOURCES} "examples/thcmpo/utils.c" "examples/thcmpo/states.c" "examples/thcmpo/thcmpo.c" "examples/thcmpo/main.c")
-target_include_directories(thc_mpo PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
-target_link_libraries(     thc_mpo PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
-if(OpenMP_C_FOUND)
-    target_link_libraries(thc_mpo PUBLIC OpenMP::OpenMP_C)
-endif()
-
 add_test(NAME chemtensor_test COMMAND chemtensor_test)
+
+# build THC MPO example / experiments
+file(GLOB THC_SOURCES "examples/thcmpo/src/*.c")
+file(GLOB THC_INCLUDE "examples/thcmpo/include")
+file(GLOB THC_BENCH_ENTRIES "examples/thcmpo/benchmarks/*.c")
+foreach(ENTRY IN LISTS THC_BENCH_ENTRIES)
+    get_filename_component(target_name ${ENTRY} NAME_WE) # filename without extension
+    
+    add_executable("${target_name}" ${CHEMTENSOR_SOURCES} ${THC_SOURCES} ${ENTRY})
+    
+    target_include_directories("${target_name}" PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${THC_INCLUDE})
+    target_link_libraries("${target_name}" PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
+    
+    if(OpenMP_C_FOUND)
+        target_link_libraries("${target_name}" PUBLIC OpenMP::OpenMP_C)
+    endif()
+endforeach()
