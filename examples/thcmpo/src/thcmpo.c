@@ -320,16 +320,16 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
     // setup MPO graph
     assembly->graph.nsites = nsites;
 
-    assembly->graph.num_edges = ct_malloc(nsites * sizeof(int));
-    assembly->graph.edges = ct_malloc(nsites * sizeof(struct mpo_graph_edge *));
+    assembly->graph.num_edges = ct_calloc(nsites, sizeof(int));
+    assembly->graph.edges = ct_calloc(nsites, sizeof(struct mpo_graph_edge *));
 
-    assembly->graph.num_verts = ct_malloc((nsites + 1) * sizeof(int));
-    assembly->graph.verts = ct_malloc((nsites + 1) * sizeof(struct mpo_graph_vertex *));
+    assembly->graph.verts = ct_calloc(nsites + 1, sizeof(struct mpo_graph_vertex *));
+    assembly->graph.num_verts = ct_calloc(nsites + 1, sizeof(int));
 
     // left-most site
     {
         // v0
-        assembly->graph.verts[0] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.verts[0] = ct_calloc(1, sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[0] = 1;
         assembly->graph.verts[0]->qnum = 0;
 
@@ -338,7 +338,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
         assembly->graph.num_edges[0] = 2;
 
         // (v2, v3)
-        assembly->graph.verts[1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.verts[1] = ct_calloc(2, sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[1] = 2;
 
         assembly->graph.verts[1][0].qnum = 0;
@@ -365,7 +365,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
         assembly->graph.edges[i] = ct_malloc(3 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[i] = 3;
 
-        assembly->graph.verts[i + 1] = ct_malloc(2 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.verts[i + 1] = ct_calloc(2, sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[i + 1] = 2;
 
         assembly->graph.verts[i + 1][0].qnum = 0;
@@ -401,7 +401,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double *chi_row, cons
         assembly->graph.edges[nsites - 1] = ct_malloc(2 * sizeof(struct mpo_graph_edge));
         assembly->graph.num_edges[nsites - 1] = 2;
 
-        assembly->graph.verts[nsites] = ct_malloc(1 * sizeof(struct mpo_graph_vertex));
+        assembly->graph.verts[nsites] = ct_calloc(1, sizeof(struct mpo_graph_vertex));
         assembly->graph.num_verts[nsites] = 1;
         assembly->graph.verts[nsites]->qnum = qeff;
 
@@ -636,13 +636,15 @@ void apply_thc(const struct mps *psi, struct mpo **g, const struct dense_tensor 
     }
 }
 
-void mps_add_combiner(struct mps *out, struct mps *in) {
+void mps_add_combiner(struct mps *out, struct mps *in)
+{
     struct mps ret;
     add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
     *out = ret;
 }
 
-void mps_add_initializer(struct mps *priv, struct mps *orig) {
+void mps_add_initializer(struct mps *priv, struct mps *orig)
+{
     mps_deep_copy(orig, priv);
 }
 
@@ -650,14 +652,18 @@ void apply_thc_omp(const struct mps *psi, struct mpo **g, const struct dense_ten
 {
     struct mps acc = *phi; // openmp reduction requires non-pointer type
 
-    #pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
-        initializer(mps_add_initializer(&omp_priv, &omp_orig))
+#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
+    initializer(mps_add_initializer(&omp_priv, &omp_orig))
 
-    #pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
-    for (size_t n = 0; n < N; n++) {
-        for (size_t s1 = 0; s1 < 2; s1++) {
-            for (size_t m = 0; m < N; m++) {
-                for (size_t s2 = 0; s2 < 2; s2++) {
+#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
+    for (size_t n = 0; n < N; n++)
+    {
+        for (size_t s1 = 0; s1 < 2; s1++)
+        {
+            for (size_t m = 0; m < N; m++)
+            {
+                for (size_t s2 = 0; s2 < 2; s2++)
+                {
                     struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
                     {
                         struct mps b;
@@ -702,6 +708,6 @@ void apply_thc_omp(const struct mps *psi, struct mpo **g, const struct dense_ten
             }
         }
     } // implicit barrier
-    
+
     *phi = acc;
 }
