@@ -57,50 +57,21 @@ void print_mps(struct mps mps)
     }
 }
 
-// TODO: Create one large hdf5 dataset instead of multiple ones.
-void read_data(double *zeta, double *chi)
+void read_water(double *zeta, double *chi, double *H, double *tkin)
 {
-    hid_t file = H5Fopen("../examples/thcmpo/data/water_chi_zeta.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (file < 0)
+    hid_t file = H5Fopen("../examples/thcmpo/data/water.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    
+    assert(file >= 0);
+    assert(read_hdf5_dataset(file, "zeta", H5T_NATIVE_DOUBLE, zeta) >= 0);
+    assert(read_hdf5_dataset(file, "chi", H5T_NATIVE_DOUBLE, chi) >= 0);
+
+    if (H != NULL)
     {
-        printf("'H5Fopen' failed\n");
+        assert(read_hdf5_dataset(file, "H", H5T_NATIVE_DOUBLE, H) >= 0);
     }
 
-    if (read_hdf5_dataset(file, "zeta", H5T_NATIVE_DOUBLE, zeta) < 0)
+    if (tkin != NULL)
     {
-        printf("can not read zeta\n");
-    }
-
-    if (read_hdf5_dataset(file, "chi", H5T_NATIVE_DOUBLE, chi) < 0)
-    {
-        printf("can not read chi\n");
-    }
-}
-
-void read_hamiltonian(double *H)
-{
-    hid_t file = H5Fopen("../examples/thcmpo/data/water_h.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (file < 0)
-    {
-        printf("'H5Fopen' failed\n");
-    }
-
-    if (read_hdf5_dataset(file, "H", H5T_NATIVE_DOUBLE, H) < 0)
-    {
-        printf("can not read H\n");
-    }
-}
-
-void read_kinetic(double *tkin)
-{
-    hid_t file = H5Fopen("../examples/thcmpo/data/water_t.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (file < 0)
-    {
-        printf("'H5Fopen' failed\n");
-    }
-
-    if (read_hdf5_dataset(file, "T", H5T_NATIVE_DOUBLE, tkin) < 0)
-    {
-        printf("can not read H\n");
+        assert(read_hdf5_dataset(file, "tkin", H5T_NATIVE_DOUBLE, tkin) >= 0);
     }
 }

@@ -16,18 +16,19 @@ int main()
     const double TOL = 1e-20;
     const long MAX_VDIM = LONG_MAX;
 
-    // ζ, χ
-    struct dense_tensor zeta;
-    struct dense_tensor chi;
+    struct dense_tensor zeta; // ζ
     {
-        const long zeta_dim[2] = {N, N};
-        allocate_dense_tensor(CT_DOUBLE_REAL, 2, zeta_dim, &zeta);
-
-        const long chi_dim[2] = {N, L};
-        allocate_dense_tensor(CT_DOUBLE_REAL, 2, chi_dim, &chi);
-
-        read_data((double *)zeta.data, (double *)chi.data);
+        const long dim[2] = {N, N};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &zeta);
     }
+
+    struct dense_tensor chi; // χ
+    {
+        const long dim[2] = {N, L};
+        allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &chi);
+    }
+
+    read_water((double *)zeta.data, (double *)chi.data, NULL, NULL);
 
     // G_{nu, sigma}
     struct mpo **g;

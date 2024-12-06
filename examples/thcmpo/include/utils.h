@@ -13,8 +13,4 @@ void print_mpo(struct mpo mpo);
 
 void print_mps(struct mps mps);
 
-void read_data(double *zeta, double *chi);
-
-void read_hamiltonian(double *H);
-
-void read_kinetic(double *tkin);
+void read_water(double *H, double *tkin, double *zeta, double *chi);
