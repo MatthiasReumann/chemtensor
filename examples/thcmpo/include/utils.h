@@ -14,3 +14,5 @@ void print_mpo(struct mpo mpo);
 void print_mps(struct mps mps);
 
 void read_water(double *H, double *tkin, double *zeta, double *chi);
+
+void read_h10(double *zeta, double *chi, double *H, double *tkin);
