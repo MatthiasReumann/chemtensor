@@ -53,7 +53,7 @@ int main()
 
         // Initialize as '0' MPS.
         const double alpha = 0.;
-        mps_deep_copy(&hfs, &v_psi);
+        copy_mps(&hfs, &v_psi);
         scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
 
         clock_gettime(CLOCK_MONOTONIC, &start);
