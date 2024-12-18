@@ -594,6 +594,7 @@ void apply_thc(const struct mps* psi, struct mpo** g, const struct dense_tensor 
 void mps_add_combiner(struct mps* out, struct mps* in) {
 	struct mps ret;
 	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
+	// TODO: Delete MPS?
 	*out = ret;
 }
 
@@ -699,12 +700,6 @@ void apply_thc_omp_no_reduc(const struct mps* psi, struct mpo** g, const struct 
 						delete_mps(&b);
 					}
 
-					// struct mps acc_nxt;
-					// add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
-					// delete_mps(&acc); // delete old acc
-
-					// acc = acc_nxt;
-
 					delete_mps(&G_psi);
 				}
 			}
@@ -712,3 +707,121 @@ void apply_thc_omp_no_reduc(const struct mps* psi, struct mpo** g, const struct 
 	} // implicit barrier
 }
 
+
+void mps_add_combiner_prof(struct mps* out, struct mps* in) {
+	double dur;
+	struct timespec t0, t1;
+	struct mps ret;
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	add_and_compress(out, in, 1e-20, LONG_MAX, &ret);
+	clock_gettime(CLOCK_MONOTONIC, &t1);
+	dur = (t1.tv_sec - t0.tv_sec);
+	dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+
+	#pragma omp critical
+	{
+		printf("reduction,%f\n", dur);
+	}
+	*out = ret;
+}
+
+void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
+	struct mps acc = *phi; // openmp reduction requires non-pointer type
+
+#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
+	initializer(mps_add_initializer(&omp_priv, &omp_orig))
+
+#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
+	for (size_t n = 0; n < N; n++) {
+		for (size_t s1 = 0; s1 < 2; s1++) {
+			for (size_t m = 0; m < N; m++) {
+				for (size_t s2 = 0; s2 < 2; s2++) {
+					double dur;
+					struct timespec t0, t1;
+					
+					struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
+					{
+						struct mps b;
+						
+						clock_gettime(CLOCK_MONOTONIC, &t0);
+						{
+							// G_{ν, σ'}
+							struct mps tmp;
+							const long off = index_to_g_offset(N, n, s1);
+							apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
+							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &b);
+							delete_mps(&tmp);
+						}
+						clock_gettime(CLOCK_MONOTONIC, &t1);
+						dur = (t1.tv_sec - t0.tv_sec);
+            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+
+						#pragma omp critical
+						{
+							printf("apply,%f\n", dur);
+						}
+
+						double alpha; // ɑ = .5 * ζ_{μ,ν}
+						{
+							const long index[2] = {m, n};
+							const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
+							alpha = 0.5 * ((double*)zeta.data)[offset];
+						}
+
+						clock_gettime(CLOCK_MONOTONIC, &t0);
+						scale_block_sparse_tensor(&alpha, &(b.a[0]));
+						clock_gettime(CLOCK_MONOTONIC, &t1);
+						dur = (t1.tv_sec - t0.tv_sec);
+            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+
+						#pragma omp critical
+						{
+							printf("scale,%f\n", dur);
+						}
+
+						clock_gettime(CLOCK_MONOTONIC, &t0);
+						{
+							// G_{μ, σ}
+							struct mps tmp;
+							const long off = index_to_g_offset(N, m, s2);
+							apply_and_compress(&b, &g[off][0], tol, max_vdim, &tmp);
+							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &G_psi);
+							delete_mps(&tmp);
+						}
+						clock_gettime(CLOCK_MONOTONIC, &t1);
+						dur = (t1.tv_sec - t0.tv_sec);
+            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+
+						#pragma omp critical
+						{
+							printf("apply,%f\n", dur);
+						}
+
+						delete_mps(&b);
+					}
+
+					struct mps acc_nxt;
+					clock_gettime(CLOCK_MONOTONIC, &t0);
+					add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
+					clock_gettime(CLOCK_MONOTONIC, &t1);
+					dur = (t1.tv_sec - t0.tv_sec);
+            		dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+
+					#pragma omp critical
+					{
+						printf("add,%f\n", dur);
+					}
+
+
+					delete_mps(&acc); // delete old acc
+
+					acc = acc_nxt;
+
+					delete_mps(&G_psi);
+				}
+			}
+		}
+	} // implicit barrier
+
+	*phi = acc;
+}
