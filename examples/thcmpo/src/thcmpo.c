@@ -659,3 +659,56 @@ void apply_thc_omp(const struct mps* psi, struct mpo** g, const struct dense_ten
 
 	*phi = acc;
 }
+
+void apply_thc_omp_no_reduc(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
+#pragma omp parallel for collapse(4) shared(psi)
+	for (size_t n = 0; n < N; n++) {
+		for (size_t s1 = 0; s1 < 2; s1++) {
+			for (size_t m = 0; m < N; m++) {
+				for (size_t s2 = 0; s2 < 2; s2++) {
+					struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
+					{
+						struct mps b;
+						{
+							// G_{ν, σ'}
+							struct mps tmp;
+							const long off = index_to_g_offset(N, n, s1);
+							apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
+							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &b);
+							delete_mps(&tmp);
+						}
+
+						double alpha; // ɑ = .5 * ζ_{μ,ν}
+						{
+							const long index[2] = {m, n};
+							const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
+							alpha = 0.5 * ((double*)zeta.data)[offset];
+						}
+
+						scale_block_sparse_tensor(&alpha, &(b.a[0]));
+
+						{
+							// G_{μ, σ}
+							struct mps tmp;
+							const long off = index_to_g_offset(N, m, s2);
+							apply_and_compress(&b, &g[off][0], tol, max_vdim, &tmp);
+							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &G_psi);
+							delete_mps(&tmp);
+						}
+
+						delete_mps(&b);
+					}
+
+					// struct mps acc_nxt;
+					// add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
+					// delete_mps(&acc); // delete old acc
+
+					// acc = acc_nxt;
+
+					delete_mps(&G_psi);
+				}
+			}
+		}
+	} // implicit barrier
+}
+
