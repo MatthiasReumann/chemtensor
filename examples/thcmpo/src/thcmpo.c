@@ -728,7 +728,7 @@ void mps_add_combiner_prof(struct mps* out, struct mps* in) {
 void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
 	struct mps acc = *phi; // openmp reduction requires non-pointer type
 
-#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
+#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner_prof(&omp_out, &omp_in)) \
 	initializer(mps_add_initializer(&omp_priv, &omp_orig))
 
 #pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
