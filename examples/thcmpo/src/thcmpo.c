@@ -720,7 +720,7 @@ void mps_add_combiner_prof(struct mps* out, struct mps* in) {
 
 	#pragma omp critical
 	{
-		printf("reduction,%f\n", dur);
+		printf("reduction;%f\n", dur);
 	}
 	*out = ret;
 }
@@ -758,7 +758,7 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 
 						#pragma omp critical
 						{
-							printf("apply,%f\n", dur);
+							printf("apply;%f\n", dur);
 						}
 
 						double alpha; // ɑ = .5 * ζ_{μ,ν}
@@ -776,7 +776,7 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 
 						#pragma omp critical
 						{
-							printf("scale,%f\n", dur);
+							printf("scale;%f\n", dur);
 						}
 
 						clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -794,7 +794,7 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 
 						#pragma omp critical
 						{
-							printf("apply,%f\n", dur);
+							printf("apply;%f\n", dur);
 						}
 
 						delete_mps(&b);
@@ -809,7 +809,7 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 
 					#pragma omp critical
 					{
-						printf("add,%f\n", dur);
+						printf("add;%f\n", dur);
 					}
 
 
