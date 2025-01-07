@@ -25,6 +25,7 @@ char* test_dense_tensor_concatenate();
 char* test_dense_tensor_block_diag();
 char* test_dense_tensor_qr();
 char* test_dense_tensor_rq();
+char* test_dense_tensor_eigh();
 char* test_dense_tensor_svd();
 char* test_dense_tensor_block();
 char* test_block_sparse_tensor_copy();
@@ -81,6 +82,8 @@ char* test_bose_hubbard_1d_mpo();
 char* test_fermi_hubbard_1d_mpo();
 char* test_molecular_hamiltonian_mpo();
 char* test_spin_molecular_hamiltonian_mpo();
+char* test_quadratic_fermionic_mpo();
+char* test_quadratic_spin_fermionic_mpo();
 char* test_retained_bond_indices();
 char* test_split_block_sparse_matrix_svd();
 char* test_split_block_sparse_matrix_svd_zero();
@@ -90,6 +93,8 @@ char* test_ttno_inner_product();
 char* test_dmrg_singlesite();
 char* test_dmrg_twosite();
 char* test_operator_average_coefficient_gradient();
+char* test_apply_thc_spin_molecular_hamiltonian();
+char* test_thc_spin_molecular_hamiltonian_to_matrix();
 
 
 #define TEST_FUNCTION_ENTRY(fname) { .func = fname, .name = #fname }
@@ -113,6 +118,7 @@ int main()
 		TEST_FUNCTION_ENTRY(test_dense_tensor_block_diag),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_qr),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_rq),
+		TEST_FUNCTION_ENTRY(test_dense_tensor_eigh),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_svd),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_block),
 		TEST_FUNCTION_ENTRY(test_block_sparse_tensor_copy),
@@ -168,6 +174,8 @@ int main()
 		TEST_FUNCTION_ENTRY(test_fermi_hubbard_1d_mpo),
 		TEST_FUNCTION_ENTRY(test_molecular_hamiltonian_mpo),
 		TEST_FUNCTION_ENTRY(test_spin_molecular_hamiltonian_mpo),
+		TEST_FUNCTION_ENTRY(test_quadratic_fermionic_mpo),
+		TEST_FUNCTION_ENTRY(test_quadratic_spin_fermionic_mpo),
 		TEST_FUNCTION_ENTRY(test_retained_bond_indices),
 		TEST_FUNCTION_ENTRY(test_split_block_sparse_matrix_svd),
 		TEST_FUNCTION_ENTRY(test_split_block_sparse_matrix_svd_zero),
@@ -177,6 +185,8 @@ int main()
 		TEST_FUNCTION_ENTRY(test_dmrg_singlesite),
 		TEST_FUNCTION_ENTRY(test_dmrg_twosite),
 		TEST_FUNCTION_ENTRY(test_operator_average_coefficient_gradient),
+		TEST_FUNCTION_ENTRY(test_apply_thc_spin_molecular_hamiltonian),
+		TEST_FUNCTION_ENTRY(test_thc_spin_molecular_hamiltonian_to_matrix),
 	};
 	int num_tests = sizeof(tests) / sizeof(struct test);
 
