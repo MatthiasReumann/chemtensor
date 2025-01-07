@@ -18,7 +18,7 @@ int main()
 		construct_spin_basis_mps(L, spin_state, &hfs);
 	}
 
-    thc_benchmark_apply_thc_run(N, L, TOL, MAX_VDIM, &read_water, &apply_thc_omp_prof, &hfs);
+    thc_benchmark_apply_thc_run(N, L, TOL, MAX_VDIM, 0, &read_water, &apply_thc_omp_prof, &hfs);
 
     delete_mps(&hfs);
 }

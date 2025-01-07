@@ -424,6 +424,13 @@ long index_to_g_offset(const long N, const long i, const long s) {
 	return i + N * s;
 }
 
+void allocate_thc_mpo_map(const long N, struct mpo*** g) {
+	(*g) = ct_malloc(2 * N * sizeof(struct mpo*));
+	for (size_t i = 0; i < 2 * N; i++) {
+		(*g)[i] = ct_malloc(2 * sizeof(struct mpo));
+	}
+}
+
 void construct_g(const struct dense_tensor chi, const long N, const long L, struct mpo** g) {
 	for (size_t i = 0; i < N; i++) {
 		double* chi_row;
@@ -470,7 +477,7 @@ void construct_g(const struct dense_tensor chi, const long N, const long L, stru
 	}
 }
 
-void construct_g_4d(const struct dense_tensor chi, const long N, const long L, struct mpo** g) {
+void construct_thc_mpo_map(const struct dense_tensor chi, const long N, const long L, struct mpo** g) {
 	for (size_t i = 0; i < N; i++) {
 		const long index[2] = {i, 0};
 		const long chi_off = tensor_index_to_offset(chi.ndim, chi.dim, index);
@@ -593,7 +600,7 @@ void apply_thc(const struct mps* psi, struct mpo** g, const struct dense_tensor 
 
 void mps_add_combiner(struct mps* out, struct mps* in) {
 	struct mps ret;
-	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
+	add_and_compress(out, in, 1e-20, 75, &ret); // TODO: Specify parameters via preprocessor.
 	// TODO: Delete MPS?
 	*out = ret;
 }
@@ -707,7 +714,6 @@ void apply_thc_omp_no_reduc(const struct mps* psi, struct mpo** g, const struct 
 	} // implicit barrier
 }
 
-
 void mps_add_combiner_prof(struct mps* out, struct mps* in) {
 	double dur;
 	struct timespec t0, t1;
@@ -718,7 +724,7 @@ void mps_add_combiner_prof(struct mps* out, struct mps* in) {
 	dur = (t1.tv_sec - t0.tv_sec);
 	dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 
-	#pragma omp critical
+#pragma omp critical
 	{
 		printf("reduction;%f\n", dur);
 	}
@@ -738,11 +744,11 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 				for (size_t s2 = 0; s2 < 2; s2++) {
 					double dur;
 					struct timespec t0, t1;
-					
+
 					struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
 					{
 						struct mps b;
-						
+
 						clock_gettime(CLOCK_MONOTONIC, &t0);
 						{
 							// G_{ν, σ'}
@@ -754,9 +760,9 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 						}
 						clock_gettime(CLOCK_MONOTONIC, &t1);
 						dur = (t1.tv_sec - t0.tv_sec);
-            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 
-						#pragma omp critical
+#pragma omp critical
 						{
 							printf("apply;%f\n", dur);
 						}
@@ -772,9 +778,9 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 						scale_block_sparse_tensor(&alpha, &(b.a[0]));
 						clock_gettime(CLOCK_MONOTONIC, &t1);
 						dur = (t1.tv_sec - t0.tv_sec);
-            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 
-						#pragma omp critical
+#pragma omp critical
 						{
 							printf("scale;%f\n", dur);
 						}
@@ -790,9 +796,9 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 						}
 						clock_gettime(CLOCK_MONOTONIC, &t1);
 						dur = (t1.tv_sec - t0.tv_sec);
-            			dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 
-						#pragma omp critical
+#pragma omp critical
 						{
 							printf("apply;%f\n", dur);
 						}
@@ -805,13 +811,12 @@ void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dens
 					add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
 					clock_gettime(CLOCK_MONOTONIC, &t1);
 					dur = (t1.tv_sec - t0.tv_sec);
-            		dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
+					dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 
-					#pragma omp critical
+#pragma omp critical
 					{
 						printf("add;%f\n", dur);
 					}
-
 
 					delete_mps(&acc); // delete old acc
 

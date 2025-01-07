@@ -74,6 +74,8 @@ void read_water(double *zeta, double *chi, double *H, double *tkin)
     {
         assert(read_hdf5_dataset(file, "tkin", H5T_NATIVE_DOUBLE, tkin) >= 0);
     }
+
+    H5Fclose(file);
 }
 
 void read_h10(double *zeta, double *chi, double *H, double *tkin)
@@ -85,7 +87,7 @@ void read_h10(double *zeta, double *chi, double *H, double *tkin)
     assert(file >= 0);
     assert(read_hdf5_dataset(file, "zeta", H5T_NATIVE_DOUBLE, zeta) >= 0);
     assert(read_hdf5_dataset(file, "chi", H5T_NATIVE_DOUBLE, chi) >= 0);
-
+    
     if (H != NULL)
     {
         assert(read_hdf5_dataset(file, "H", H5T_NATIVE_DOUBLE, H) >= 0);
@@ -95,4 +97,6 @@ void read_h10(double *zeta, double *chi, double *H, double *tkin)
     {
         assert(read_hdf5_dataset(file, "tkin", H5T_NATIVE_DOUBLE, tkin) >= 0);
     }
+
+    H5Fclose(file);
 }

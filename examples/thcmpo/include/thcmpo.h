@@ -12,9 +12,11 @@ void interleave_zero(const double* a, const long n, const long offset, double** 
 
 long index_to_g_offset(const long N, const long i, const long s);
 
+void allocate_thc_mpo_map(const long N, struct mpo*** g);
+
 void construct_g(const struct dense_tensor chi, const long N, const long L, struct mpo** g);
 
-void construct_g_4d(const struct dense_tensor chi, const long N, const long L, struct mpo** g);
+void construct_thc_mpo_map(const struct dense_tensor chi, const long N, const long L, struct mpo** g);
 
 void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret);
 

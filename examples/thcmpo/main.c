@@ -47,7 +47,7 @@ void water() {
 	for (size_t i = 0; i < 2 * N; i++) {
 		g[i] = ct_malloc(2 * sizeof(struct mpo));
 	}
-	construct_g_4d(chi, N, L, g);
+	construct_thc_mpo_map(chi, N, L, g);
 
 	// hartree fock state
 	struct mps hfs;
