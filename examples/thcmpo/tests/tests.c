@@ -5,11 +5,11 @@
 #include <time.h>
 
 #include "states.h"
-#include "thcmpo.h"
+#include "thcops.h"
 #include "utils.h"
 
-void compute_reference(const struct dense_tensor *H, const struct mps *psi, struct dense_tensor *ret) {
-    struct dense_tensor psi_vec;
+void compute_reference(const struct dense_tensor* H, const struct mps* psi, struct dense_tensor* ret) {
+	struct dense_tensor psi_vec;
 	{
 		struct block_sparse_tensor bst;
 		mps_to_statevector(psi, &bst);
@@ -19,10 +19,10 @@ void compute_reference(const struct dense_tensor *H, const struct mps *psi, stru
 		delete_block_sparse_tensor(&bst);
 	}
 
-    const int i_ax = 1;
-    dense_tensor_multiply_axis(H, i_ax, &psi_vec, TENSOR_AXIS_RANGE_LEADING, ret);
+	const int i_ax = 1;
+	dense_tensor_multiply_axis(H, i_ax, &psi_vec, TENSOR_AXIS_RANGE_LEADING, ret);
 
-    delete_dense_tensor(&psi_vec);
+	delete_dense_tensor(&psi_vec);
 }
 
 int main() {
@@ -59,7 +59,7 @@ int main() {
 	read_water((double*)zeta.data, (double*)chi.data, (double*)H.data, (double*)t.data);
 
 	struct mpo** g; // G[μ, σ]
-    allocate_thc_mpo_map(N, &g);
+	allocate_thc_mpo_map(N, &g);
 	construct_thc_mpo_map(chi, N, L, g);
 
 	// hartree fock state
@@ -69,7 +69,7 @@ int main() {
 
 	// hartree fock as dense tensor ~ vector
 	struct dense_tensor ref;
-    compute_reference(&H, &psi, &ref);
+	compute_reference(&H, &psi, &ref);
 
 	struct mpo T;
 	{
@@ -82,7 +82,7 @@ int main() {
 		delete_mpo_assembly(&assembly);
 	}
 
-    struct mps v_psi;
+	struct mps v_psi;
 	{
 		// Initialize as '0' MPS.
 		const double alpha = 0.;
@@ -113,16 +113,16 @@ int main() {
 	assert(dense_tensor_allclose(&ref, &actual, 1e-8));
 
 	// teardown
-    delete_dense_tensor(&actual);
+	delete_dense_tensor(&actual);
 	delete_mps(&h_psi);
 	delete_mps(&t_psi);
 	delete_mps(&v_psi);
 	delete_mpo(&T);
 	delete_dense_tensor(&ref);
-    delete_mps(&psi);
-    // TODO: g
-    delete_dense_tensor(&t);
-    delete_dense_tensor(&H);
+	delete_mps(&psi);
+	// TODO: g
+	delete_dense_tensor(&t);
+	delete_dense_tensor(&H);
 	delete_dense_tensor(&chi);
 	delete_dense_tensor(&zeta);
 }

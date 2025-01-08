@@ -5,7 +5,7 @@
 #include <time.h>
 
 #include "states.h"
-#include "thcmpo.h"
+#include "thcops.h"
 #include "utils.h"
 
 void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, const long max_vdim,
@@ -54,17 +54,16 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 	copy_mps(start, &psi);
 	for (size_t i = 0; i < K; i++) {
 		const double alpha = 0.;
-		
+
 		struct mps v_psi;
 		struct mps t_psi;
 		struct mps h_psi;
 
-	
 		copy_mps(&psi, &v_psi);
 		scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
 
-		apply_thcf(&psi, g, zeta, N, tol, max_vdim, &v_psi); //  v|ᴪ>
-		apply_and_compress(&psi, &T, tol, max_vdim, &t_psi); // t|ᴪ>
+		apply_thcf(&psi, g, zeta, N, tol, max_vdim, &v_psi);     //  v|ᴪ>
+		apply_and_compress(&psi, &T, tol, max_vdim, &t_psi);     // t|ᴪ>
 		add_and_compress(&t_psi, &v_psi, tol, max_vdim, &h_psi); // t|ᴪ> + v|ᴪ>
 
 		delete_mps(&t_psi);

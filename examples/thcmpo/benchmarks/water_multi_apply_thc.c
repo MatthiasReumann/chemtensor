@@ -1,24 +1,23 @@
 #include "benchmark.h"
-#include "thcmpo.h"
-#include "states.h"
-#include "utils.h"
 #include "mps.h"
+#include "states.h"
+#include "thcops.h"
+#include "utils.h"
 
-int main()
-{
-    const long N = 28;
-    const long L = 7;
+int main() {
+	const long N = 28;
+	const long L = 7;
 
-    const double TOL = 1e-20;
-    const long MAX_VDIM = LONG_MAX;
+	const double TOL = 1e-20;
+	const long MAX_VDIM = LONG_MAX;
 
-    struct mps hfs; // hartree fock state
+	struct mps hfs; // hartree fock state
 	const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0};
 	{
 		construct_spin_basis_mps(L, spin_state, &hfs);
 	}
 
-    thc_benchmark_apply_thc_run(N, L, TOL, MAX_VDIM, 0, &read_water, &apply_thc_omp, &hfs);
+	thc_benchmark_apply_thc_run(N, L, TOL, MAX_VDIM, 0, &read_water, &apply_thc_omp, &hfs);
 
-    delete_mps(&hfs);
+	delete_mps(&hfs);
 }
