@@ -21,7 +21,6 @@ target_link_libraries(     chemtensor_test PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_L
 
 add_library(               chemtensor_pymodule SHARED ${CHEMTENSOR_SOURCES} "python/pymodule.c")
 target_include_directories(chemtensor_pymodule PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
-
 target_link_libraries(     chemtensor_pymodule PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES} ${Python3_LIBRARIES})
 set_target_properties(     chemtensor_pymodule PROPERTIES PREFIX "" OUTPUT_NAME "chemtensor_pymodule" LINKER_LANGUAGE C)
 
@@ -50,10 +49,11 @@ foreach(ENTRY IN LISTS THC_BENCH_ENTRIES)
     endif()
 endforeach()
 
-# main.c (for testing)
-add_executable(thc_mpo ${CHEMTENSOR_SOURCES} ${THC_SOURCES} "examples/thcmpo/main.c")
-target_include_directories(thc_mpo PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${THC_INCLUDE})
-target_link_libraries(thc_mpo PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
+# tests
+add_executable(thc_tests ${CHEMTENSOR_SOURCES} ${THC_SOURCES} "examples/thcmpo/tests/tests.c")
+target_include_directories(thc_tests PRIVATE ${CHEMTENSOR_DIRS} ${BLAS_INCLUDE_DIRS} ${LAPACKE_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${THC_INCLUDE})
+target_link_libraries(thc_tests PRIVATE ${BLAS_LIBRARIES} ${LAPACKE_LIBRARIES} ${HDF5_LIBRARIES})
 if(OpenMP_C_FOUND)
-    target_link_libraries(thc_mpo PUBLIC OpenMP::OpenMP_C)
+    target_link_libraries(thc_tests PUBLIC OpenMP::OpenMP_C)
 endif()
+add_test(NAME thc_tests COMMAND thc_tests)

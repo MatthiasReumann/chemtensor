@@ -600,7 +600,7 @@ void apply_thc(const struct mps* psi, struct mpo** g, const struct dense_tensor 
 
 void mps_add_combiner(struct mps* out, struct mps* in) {
 	struct mps ret;
-	add_and_compress(out, in, 1e-20, 75, &ret); // TODO: Specify parameters via preprocessor.
+	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
 	// TODO: Delete MPS?
 	*out = ret;
 }
