@@ -83,7 +83,7 @@ int main() {
 		delete_block_sparse_tensor(&bst);
 	}
 
-	assert(dense_tensor_allclose(&ref, &h_psi_vec, 1e-8));
+	assert(dense_tensor_allclose(&ref, &h_psi_vec, 1e-10));
 
 	// teardown
 	delete_dense_tensor(&h_psi_vec);

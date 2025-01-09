@@ -1,5 +1,7 @@
 #include <math.h>
+#if defined(_OPENMP)
 #include <omp.h>
+#endif
 #include <stdio.h>
 #include <time.h>
 
