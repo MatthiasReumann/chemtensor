@@ -50,17 +50,16 @@ int main() {
 		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &H);
 	}
 
-	struct dense_tensor t; // t[p, q]
+	struct dense_tensor tkin; // t[p, q]
 	{
 		const long dim[2] = {L, L};
-		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &t);
+		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &tkin);
 	}
 
-	read_water((double*)zeta.data, (double*)chi.data, (double*)H.data, (double*)t.data);
+	read_water((double*)zeta.data, (double*)chi.data, (double*)H.data, (double*)tkin.data);
 
-	struct mpo** g; // G[μ, σ]
-	allocate_thc_mpo_map(N, &g);
-	construct_thc_mpo_map(chi, N, L, g);
+	struct thc_spin_hamiltonian hamiltonian;
+	construct_thc_spin_hamiltonian(&tkin, &zeta, &chi, &hamiltonian);
 
 	// hartree fock state
 	struct mps psi;
@@ -71,57 +70,27 @@ int main() {
 	struct dense_tensor ref;
 	compute_reference(&H, &psi, &ref);
 
-	struct mpo T;
-	{
-		struct dense_tensor vint;
-		struct mpo_assembly assembly;
-		const long dim[] = {L, L, L, L};
-		allocate_dense_tensor(CT_DOUBLE_REAL, 4, dim, &vint);
-		construct_spin_molecular_hamiltonian_mpo_assembly(&t, &vint, false, &assembly);
-		mpo_from_assembly(&assembly, &T);
-		delete_mpo_assembly(&assembly);
-	}
-
-	struct mps v_psi;
-	{
-		// Initialize as '0' MPS.
-		const double alpha = 0.;
-		copy_mps(&psi, &v_psi);
-		scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
-
-		apply_thc_omp(&psi, g, zeta, N, TOL, MAX_VDIM, &v_psi);
-	}
-
-	// t|ᴪ>
-	struct mps t_psi;
-	apply_and_compress(&psi, &T, TOL, MAX_VDIM, &t_psi);
-
-	// t|ᴪ> + v|ᴪ>
 	struct mps h_psi;
-	add_and_compress(&t_psi, &v_psi, TOL, MAX_VDIM, &h_psi);
+	apply_thc_hamiltonian(&hamiltonian, &psi, TOL, MAX_VDIM, &h_psi);
 
-	struct dense_tensor actual;
+	struct dense_tensor h_psi_vec;
 	{
 		struct block_sparse_tensor bst;
 		mps_to_statevector(&h_psi, &bst);
-		block_sparse_to_dense_tensor(&bst, &actual);
+		block_sparse_to_dense_tensor(&bst, &h_psi_vec);
 		const long dim[] = {16384};
-		reshape_dense_tensor(1, dim, &actual);
+		reshape_dense_tensor(1, dim, &h_psi_vec);
 		delete_block_sparse_tensor(&bst);
 	}
 
-	assert(dense_tensor_allclose(&ref, &actual, 1e-8));
+	assert(dense_tensor_allclose(&ref, &h_psi_vec, 1e-8));
 
 	// teardown
-	delete_dense_tensor(&actual);
+	delete_dense_tensor(&h_psi_vec);
 	delete_mps(&h_psi);
-	delete_mps(&t_psi);
-	delete_mps(&v_psi);
-	delete_mpo(&T);
 	delete_dense_tensor(&ref);
 	delete_mps(&psi);
-	// TODO: g
-	delete_dense_tensor(&t);
+	delete_dense_tensor(&tkin);
 	delete_dense_tensor(&H);
 	delete_dense_tensor(&chi);
 	delete_dense_tensor(&zeta);

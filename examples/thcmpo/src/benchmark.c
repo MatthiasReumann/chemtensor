@@ -11,7 +11,6 @@
 void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, const long max_vdim,
 								 const long K,
 								 void (*read)(double*, double*, double*, double*),
-								 void (*apply_thcf)(const struct mps*, struct mpo**, const struct dense_tensor, const long, const double, const long, struct mps*),
 								 const struct mps* start) {
 	const size_t REPEATS = 10;
 
@@ -27,50 +26,25 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &chi);
 	}
 
-	struct dense_tensor t; // t[p, q]
+	struct dense_tensor tkin; // t[p, q]
 	{
 		const long dim[2] = {L, L};
-		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &t);
+		allocate_dense_tensor(CT_DOUBLE_REAL, 2, dim, &tkin);
 	}
 
-	read((double*)zeta.data, (double*)chi.data, NULL, (double*)t.data);
+	read((double*)zeta.data, (double*)chi.data, NULL, (double*)tkin.data);
 
-	struct mpo** g; // G[μ, σ]
-	allocate_thc_mpo_map(N, &g);
-	construct_thc_mpo_map(chi, N, L, g);
+	struct thc_spin_hamiltonian hamiltonian;
+	construct_thc_spin_hamiltonian(&tkin, &zeta, &chi, &hamiltonian);
 
-	struct mpo T; // T (kinetic)
-	{
-		struct dense_tensor vint;
-		struct mpo_assembly assembly;
-		const long dim[] = {L, L, L, L};
-		allocate_dense_tensor(CT_DOUBLE_REAL, 4, dim, &vint);
-		construct_spin_molecular_hamiltonian_mpo_assembly(&t, &vint, false, &assembly);
-		mpo_from_assembly(&assembly, &T);
-		delete_mpo_assembly(&assembly);
-	}
-
-	struct mps psi;
+	struct mps psi; // H^{K}|start>
 	copy_mps(start, &psi);
 	for (size_t i = 0; i < K; i++) {
-		const double alpha = 0.;
-
-		struct mps v_psi;
-		struct mps t_psi;
-		struct mps h_psi;
-
-		copy_mps(&psi, &v_psi);
-		scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
-
-		apply_thcf(&psi, g, zeta, N, tol, max_vdim, &v_psi);     //  v|ᴪ>
-		apply_and_compress(&psi, &T, tol, max_vdim, &t_psi);     // t|ᴪ>
-		add_and_compress(&t_psi, &v_psi, tol, max_vdim, &h_psi); // t|ᴪ> + v|ᴪ>
-
-		delete_mps(&t_psi);
-		delete_mps(&v_psi);
+		struct mps ret;
+		apply_thc_hamiltonian(&hamiltonian, &psi, tol, max_vdim, &ret);
+		
 		delete_mps(&psi);
-
-		psi = h_psi;
+		move_mps_data(&ret, &psi);
 	}
 
 	double sum_t = 0.;
@@ -85,7 +59,7 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 			scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
 
 			clock_gettime(CLOCK_MONOTONIC, &t0);
-			apply_thcf(&psi, g, zeta, N, tol, max_vdim, &v_psi);
+			apply_thc_coulomb(&hamiltonian, &psi, tol, max_vdim, &v_psi);
 			clock_gettime(CLOCK_MONOTONIC, &t1);
 
 			double t = (t1.tv_sec - t0.tv_sec);
@@ -97,7 +71,6 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 
 	printf("%f\n", sum_t / REPEATS);
 
-	// TODO: Free g
 	delete_dense_tensor(&chi);
 	delete_dense_tensor(&zeta);
 }

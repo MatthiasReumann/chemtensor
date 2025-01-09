@@ -5,10 +5,211 @@
 
 #include "aligned_memory.h"
 #include "chain_ops.h"
+#include "hamiltonian.h"
 #include "mpo.h"
 #include "mps.h"
 #include "states.h"
+#include "thcops.h"
 #include "utils.h"
+
+/// Helper declarations
+
+void mps_add_combiner(struct mps* out, struct mps* in);
+void mps_add_initializer(struct mps* priv, struct mps* orig);
+void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret);
+void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret);
+void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos);
+long index_to_g_offset(const long N, const size_t i, const size_t s);
+
+/// Public Interface
+
+void construct_thc_spin_hamiltonian(const struct dense_tensor* tkin, struct dense_tensor* zeta, const struct dense_tensor* chi, struct thc_spin_hamiltonian* hamiltonian) {
+	const long N = chi->dim[0];
+	const long L = chi->dim[1];
+
+	// Setup
+	hamiltonian->zeta = zeta;
+	hamiltonian->thc_rank = N;
+	hamiltonian->thc_mpos = ct_malloc(4 * hamiltonian->thc_rank * sizeof(struct mpo));
+
+	// Kinetic MPO
+	struct dense_tensor vint;
+	struct mpo_assembly T_assembly;
+	const long T_dim[] = {L, L, L, L};
+
+	allocate_dense_tensor(CT_DOUBLE_REAL, 4, T_dim, &vint);
+	construct_spin_molecular_hamiltonian_mpo_assembly(tkin, &vint, false, &T_assembly);
+	mpo_from_assembly(&T_assembly, &hamiltonian->T);
+	delete_mpo_assembly(&T_assembly);
+	delete_dense_tensor(&vint);
+
+	// THC MPOs
+	construct_thc_mpos(chi, hamiltonian->thc_mpos);
+}
+
+void apply_thc_hamiltonian(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
+	// Kinetic term
+	struct mps T_psi;
+	apply_and_compress(psi, &hamiltonian->T, tol, max_vdim, &T_psi);
+
+	// Coulomb Term (Initialize V_psi as 0-MPS with same quantum numbers)
+	struct mps V_psi;
+	const double alpha = 0.;
+	copy_mps(psi, &V_psi);
+	scale_block_sparse_tensor(&alpha, &V_psi.a[0]);
+	apply_thc_coulomb(hamiltonian, psi, tol, max_vdim, &V_psi);
+
+	// Add Kinetic and Coulomb
+	add_and_compress(&T_psi, &V_psi, tol, max_vdim, ret);
+
+	// Teardown
+	delete_mps(&T_psi);
+	delete_mps(&V_psi);
+}
+
+void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
+	const long N = hamiltonian->thc_rank;
+	const struct dense_tensor* zeta = hamiltonian->zeta;
+#if defined(_OPENMP)
+	struct mps acc = *ret; // openmp reduction requires non-pointer type
+
+#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
+	initializer(mps_add_initializer(&omp_priv, &omp_orig))
+#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
+	for (size_t n = 0; n < N; n++) {
+		for (size_t tau = 0; tau < 2; tau++) {
+			for (size_t m = 0; m < N; m++) {
+				for (size_t sigma = 0; sigma < 2; sigma++) {
+
+					struct mps full_layer_psi; // (.5 * ζ[μ, ν] * G[μ, σ, ν, τ])|ᴪ>
+					struct mps half_layer_psi; // (.5 * ζ[μ, ν] * G[ν, τ])|ᴪ>
+					struct mps tmp;
+
+					{
+						const long off = index_to_g_offset(N, n, tau);
+						apply_and_compress(psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
+						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &half_layer_psi);
+						delete_mps(&tmp);
+					}
+
+					const long alpha_idx[2] = {m, n};
+					const long alpha_off = tensor_index_to_offset(zeta->ndim, zeta->dim, alpha_idx);
+					const double alpha = 0.5 * ((double*)zeta->data)[alpha_off]; // ɑ = .5 * ζ[μ, ν]
+					scale_block_sparse_tensor(&alpha, &(half_layer_psi.a[0]));
+
+					{
+						const long off = index_to_g_offset(N, m, sigma);
+						apply_and_compress(&half_layer_psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
+						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &full_layer_psi);
+						delete_mps(&tmp);
+					}
+
+					delete_mps(&half_layer_psi);
+
+					struct mps acc_nxt;
+					add_and_compress(&acc, &full_layer_psi, tol, max_vdim, &acc_nxt);
+					delete_mps(&full_layer_psi);
+					delete_mps(&acc);
+
+					move_mps_data(&acc_nxt, &acc);
+				}
+			}
+		}
+	} // implicit barrier
+
+	move_mps_data(&acc, ret);
+#else
+	for (size_t n = 0; n < N; n++) {
+		for (size_t tau = 0; tau < 2; tau++) {
+			struct mps half_layer_psi; // (.5 * ζ[μ, ν] * G[ν, τ])|ᴪ>
+
+			{
+				struct mps tmp;
+				const long off = index_to_g_offset(N, n, tau);
+				apply_and_compress(psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
+				apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &half_layer_psi);
+				delete_mps(&tmp);
+			}
+
+			for (size_t m = 0; m < N; m++) {
+				struct mps half_layer_psi_copy;
+
+				const long alpha_idx[2] = {m, n};
+				const long alpha_off = tensor_index_to_offset(zeta->ndim, zeta->dim, alpha_idx);
+				const double alpha = 0.5 * ((double*)zeta->data)[alpha_off]; // ɑ = .5 * ζ[μ, ν]
+
+				copy_mps(&half_layer_psi, &half_layer_psi_copy);
+				scale_block_sparse_tensor(&alpha, &(half_layer_psi_copy.a[0]));
+
+				for (size_t sigma = 0; sigma < 2; sigma++) {
+					struct mps full_layer_psi; // (.5 * ζ[μ, ν] * G[μ, σ, ν, τ])|ᴪ>
+
+					{
+						struct mps tmp;
+						const long off = index_to_g_offset(N, m, sigma);
+						apply_and_compress(&half_layer_psi_copy, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
+						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &full_layer_psi);
+						delete_mps(&tmp);
+					}
+
+					struct mps acc_nxt;
+					add_and_compress(ret, &full_layer_psi, tol, max_vdim, &acc_nxt);
+					delete_mps(&full_layer_psi);
+					delete_mps(ret);
+
+					move_mps_data(&acc_nxt, ret);
+				}
+
+				delete_mps(&half_layer_psi_copy);
+			}
+
+			delete_mps(&half_layer_psi);
+		}
+	}
+#endif
+}
+
+/// Helper implementations
+
+void mps_add_combiner(struct mps* out, struct mps* in) {
+	struct mps ret;
+	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
+
+	delete_mps(out);
+	delete_mps(in);
+
+	*out = ret;
+}
+
+void mps_add_initializer(struct mps* priv, struct mps* orig) {
+	copy_mps(orig, priv);
+}
+
+void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret) {
+	double norm;
+	double trunc_scale;
+	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+
+	apply_mpo(mpo, psi, ret);
+	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
+
+	ct_free(info);
+}
+
+void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
+	double norm;
+	double trunc_scale;
+	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+
+	mps_add(phi, psi, ret);
+	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
+
+	ct_free(info);
+}
+
+long index_to_g_offset(const long N, const size_t i, const size_t s) {
+	return 2 * i + 2 * N * s;
+}
 
 void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], struct mpo_graph_edge* edge) {
 	edge->nopics = 1;
@@ -19,18 +220,13 @@ void construct_thc_mpo_edge(const int oid, const int cid, const int vids[2], str
 	edge->vids[1] = vids[1];
 }
 
-///             ╭ for s in [2, L-1]  ╮
-///             ┊       ┌────┐       ┊
-///             ┊   ┌───│ Z  │────┐  ┊
-///      ┌────┐ ┊   │   └────┘    │  ┊ ┌────┐
-///  ┌───│ Z  │────● 0         0 ●─────│ χb │────┐
-///  │   └────┘ ┊   │   ┌────┐       ┊ └────┘    │
-///  ● 0        ┊   └───│ χb │────┐  ┊           ● 0
-///  │   ┌────┐ ┊       └────┘    │  ┊ ┌────┐    │
-///  └───│ χb │────● 1  ┌────┐  1 ●────│ I  │────┘
-///      └────┘ ┊  └────│ I  │────┘  ┊ └────┘
-///             ┊       └────┘       ┊
-///             ╰                    ╯
+void interleave_zero(const double* a, const long n, const long offset, double** ret) {
+	*ret = ct_calloc(2 * n, sizeof(double));
+	for (size_t i = 0; i < n; i++) {
+		(*ret)[offset + 2 * i] = a[i];
+	}
+}
+
 void construct_thc_mpo_assembly(const int nsites, const double* chi_row, const bool is_creation, struct mpo_assembly* assembly) {
 	// physical quantum numbers (particle number)
 	const long d = 2;
@@ -412,78 +608,16 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double* chi_row, cons
 	delete_dense_tensor(&id);
 }
 
-void interleave_zero(const double* a, const long n, const long offset, double** ret) {
-	*ret = ct_calloc(2 * n, sizeof(double));
-	for (size_t i = 0; i < n; i++) {
-		(*ret)[offset + 2 * i] = a[i];
-	}
-}
+void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos) {
+	const long N = chi->dim[0];
+	const long L = chi->dim[1];
 
-long index_to_g_offset(const long N, const long i, const long s) {
-	assert(i + N * s < 2 * N);
-	return i + N * s;
-}
-
-void allocate_thc_mpo_map(const long N, struct mpo*** g) {
-	(*g) = ct_malloc(2 * N * sizeof(struct mpo*));
-	for (size_t i = 0; i < 2 * N; i++) {
-		(*g)[i] = ct_malloc(2 * sizeof(struct mpo));
-	}
-}
-
-void construct_g(const struct dense_tensor chi, const long N, const long L, struct mpo** g) {
-	for (size_t i = 0; i < N; i++) {
-		double* chi_row;
-
-		// spin up
-		{
-			struct mpo_assembly assembly_p, assembly_q;
-
-			const long g_off = index_to_g_offset(N, i, 0);
-
-			const long index[2] = {i, 0};
-			const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
-			interleave_zero(&((double*)chi.data)[offset], L, 0, &chi_row);
-
-			construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
-			construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
-
-			mpo_from_assembly(&assembly_p, &g[g_off][0]);
-			mpo_from_assembly(&assembly_q, &g[g_off][1]);
-
-			delete_mpo_assembly(&assembly_p);
-			delete_mpo_assembly(&assembly_q);
-		}
-
-		// spin down
-		{
-			struct mpo_assembly assembly_p, assembly_q;
-
-			const long g_off = index_to_g_offset(N, i, 1);
-
-			const long index[2] = {i, 0};
-			const long offset = tensor_index_to_offset(chi.ndim, chi.dim, index);
-			interleave_zero(&((double*)chi.data)[offset], L / 2, 1, &chi_row);
-
-			construct_thc_mpo_assembly(L, chi_row, false, &assembly_p);
-			construct_thc_mpo_assembly(L, chi_row, true, &assembly_q);
-
-			mpo_from_assembly(&assembly_p, &g[g_off][0]);
-			mpo_from_assembly(&assembly_q, &g[g_off][1]);
-
-			delete_mpo_assembly(&assembly_p);
-			delete_mpo_assembly(&assembly_q);
-		}
-	}
-}
-
-void construct_thc_mpo_map(const struct dense_tensor chi, const long N, const long L, struct mpo** g) {
 	for (size_t i = 0; i < N; i++) {
 		const long index[2] = {i, 0};
-		const long chi_off = tensor_index_to_offset(chi.ndim, chi.dim, index);
-		const double* chi_row = &((double*)chi.data)[chi_off];
+		const long chi_off = tensor_index_to_offset(chi->ndim, chi->dim, index);
+		const double* chi_row = &((double*)chi->data)[chi_off];
 
-		// spin up
+		// spin up (0)
 		{
 			struct mpo_assembly assembly_p, assembly_q;
 
@@ -492,14 +626,14 @@ void construct_thc_mpo_map(const struct dense_tensor chi, const long N, const lo
 			construct_thc_mpo_assembly_4d(L, chi_row, false, true, &assembly_p);
 			construct_thc_mpo_assembly_4d(L, chi_row, true, true, &assembly_q);
 
-			mpo_from_assembly(&assembly_p, &g[g_off][0]);
-			mpo_from_assembly(&assembly_q, &g[g_off][1]);
+			mpo_from_assembly(&assembly_p, &thc_mpos[g_off]);
+			mpo_from_assembly(&assembly_q, &thc_mpos[g_off + 1]);
 
 			delete_mpo_assembly(&assembly_p);
 			delete_mpo_assembly(&assembly_q);
 		}
 
-		// spin down
+		// spin down (1)
 		{
 			struct mpo_assembly assembly_p, assembly_q;
 
@@ -508,318 +642,11 @@ void construct_thc_mpo_map(const struct dense_tensor chi, const long N, const lo
 			construct_thc_mpo_assembly_4d(L, chi_row, false, false, &assembly_p);
 			construct_thc_mpo_assembly_4d(L, chi_row, true, false, &assembly_q);
 
-			mpo_from_assembly(&assembly_p, &g[g_off][0]);
-			mpo_from_assembly(&assembly_q, &g[g_off][1]);
+			mpo_from_assembly(&assembly_p, &thc_mpos[g_off]);
+			mpo_from_assembly(&assembly_q, &thc_mpos[g_off + 1]);
 
 			delete_mpo_assembly(&assembly_p);
 			delete_mpo_assembly(&assembly_q);
 		}
 	}
-}
-
-void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret) {
-	double norm;
-	double trunc_scale;
-	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-
-	apply_mpo(mpo, psi, ret);
-	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
-
-	ct_free(info);
-}
-
-void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
-	double norm;
-	double trunc_scale;
-	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-
-	mps_add(phi, psi, ret);
-	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
-
-	ct_free(info);
-}
-
-void apply_thc(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
-	for (size_t n = 0; n < N; n++) {
-		for (size_t s1 = 0; s1 < 2; s1++) {
-			struct mps a;
-			struct mps b;
-
-			// G_{ν, σ'}
-			{
-				const long g_off = index_to_g_offset(N, n, s1);
-				apply_and_compress(psi, &g[g_off][0], tol, max_vdim, &a); // a = compress(p10@psi)
-				apply_and_compress(&a, &g[g_off][1], tol, max_vdim, &b);  // b = compress(p11@a)
-			}
-
-			for (size_t m = 0; m < N; m++) {
-				double alpha;
-				{
-					const long index[2] = {m, n};
-					const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
-					alpha = 0.5 * ((double*)zeta.data)[offset];
-				}
-
-				struct mps b_copy;
-				{
-					copy_mps(&b, &b_copy);
-					scale_block_sparse_tensor(&alpha, &(b_copy.a[0]));
-				}
-
-				for (size_t s2 = 0; s2 < 2; s2++) {
-					struct mps c;
-					struct mps d;
-					struct mps phi_nxt;
-
-					// G_{μ, σ}
-					{
-						const long g_off2 = index_to_g_offset(N, m, s2);
-						apply_and_compress(&b_copy, &g[g_off2][0], tol, max_vdim, &c); // c = compress(p20@b)
-						apply_and_compress(&c, &g[g_off2][1], tol, max_vdim, &d);      // d = compress(p21@c)
-					}
-
-					add_and_compress(phi, &d, tol, max_vdim, &phi_nxt);
-
-					delete_mps(phi);
-					delete_mps(&d);
-					delete_mps(&c);
-
-					*phi = phi_nxt;
-				}
-
-				delete_mps(&b_copy);
-			}
-
-			delete_mps(&a);
-			delete_mps(&b);
-		}
-	}
-}
-
-void mps_add_combiner(struct mps* out, struct mps* in) {
-	struct mps ret;
-	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
-
-	delete_mps(out);
-	delete_mps(in);
-
-	*out = ret;
-}
-
-void mps_add_initializer(struct mps* priv, struct mps* orig) {
-	copy_mps(orig, priv);
-}
-
-void apply_thc_omp(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
-	struct mps acc = *phi; // openmp reduction requires non-pointer type
-
-#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
-	initializer(mps_add_initializer(&omp_priv, &omp_orig))
-
-#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
-	for (size_t n = 0; n < N; n++) {
-		for (size_t tau = 0; tau < 2; tau++) {
-			for (size_t m = 0; m < N; m++) {
-				for (size_t sigma = 0; sigma < 2; sigma++) {
-
-					struct mps full_layer_psi; // (.5 * ζ[μ, ν] * G[μ, σ, ν, τ])|ᴪ>
-					struct mps half_layer_psi; // (.5 * ζ[μ, ν] * G[ν, τ])|ᴪ>
-					struct mps tmp;
-					
-					{
-						const long off = index_to_g_offset(N, n, tau);
-						apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
-						apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &half_layer_psi);
-						delete_mps(&tmp);
-					}
-
-					const long alpha_idx[2] = {m, n};
-					const long alpha_off = tensor_index_to_offset(zeta.ndim, zeta.dim, alpha_idx);
-					const double alpha = 0.5 * ((double*)zeta.data)[alpha_off]; // ɑ = .5 * ζ[μ, ν]
-					scale_block_sparse_tensor(&alpha, &(half_layer_psi.a[0]));
-
-					{
-						const long off = index_to_g_offset(N, m, sigma);
-						apply_and_compress(&half_layer_psi, &g[off][0], tol, max_vdim, &tmp);
-						apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &full_layer_psi);
-						delete_mps(&tmp);
-					}
-
-					delete_mps(&half_layer_psi);
-
-					struct mps acc_nxt;
-					add_and_compress(&acc, &full_layer_psi, tol, max_vdim, &acc_nxt);
-					delete_mps(&full_layer_psi);
-					delete_mps(&acc); // delete old acc
-
-					move_mps_data(&acc_nxt, &acc);
-				}
-			}
-		}
-	} // implicit barrier
-
-	move_mps_data(&acc, phi);
-}
-
-void apply_thc_omp_no_reduc(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
-#pragma omp parallel for collapse(4) shared(psi)
-	for (size_t n = 0; n < N; n++) {
-		for (size_t s1 = 0; s1 < 2; s1++) {
-			for (size_t m = 0; m < N; m++) {
-				for (size_t s2 = 0; s2 < 2; s2++) {
-					struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
-					{
-						struct mps b;
-						{
-							// G_{ν, σ'}
-							struct mps tmp;
-							const long off = index_to_g_offset(N, n, s1);
-							apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
-							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &b);
-							delete_mps(&tmp);
-						}
-
-						double alpha; // ɑ = .5 * ζ_{μ,ν}
-						{
-							const long index[2] = {m, n};
-							const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
-							alpha = 0.5 * ((double*)zeta.data)[offset];
-						}
-
-						scale_block_sparse_tensor(&alpha, &(b.a[0]));
-
-						{
-							// G_{μ, σ}
-							struct mps tmp;
-							const long off = index_to_g_offset(N, m, s2);
-							apply_and_compress(&b, &g[off][0], tol, max_vdim, &tmp);
-							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &G_psi);
-							delete_mps(&tmp);
-						}
-
-						delete_mps(&b);
-					}
-
-					delete_mps(&G_psi);
-				}
-			}
-		}
-	} // implicit barrier
-}
-
-void mps_add_combiner_prof(struct mps* out, struct mps* in) {
-	double dur;
-	struct timespec t0, t1;
-	struct mps ret;
-	clock_gettime(CLOCK_MONOTONIC, &t0);
-	add_and_compress(out, in, 1e-20, LONG_MAX, &ret);
-	clock_gettime(CLOCK_MONOTONIC, &t1);
-	dur = (t1.tv_sec - t0.tv_sec);
-	dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-
-#pragma omp critical
-	{
-		printf("reduction;%f\n", dur);
-	}
-	*out = ret;
-}
-
-void apply_thc_omp_prof(const struct mps* psi, struct mpo** g, const struct dense_tensor zeta, const long N, const double tol, const long max_vdim, struct mps* phi) {
-	struct mps acc = *phi; // openmp reduction requires non-pointer type
-
-#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner_prof(&omp_out, &omp_in)) \
-	initializer(mps_add_initializer(&omp_priv, &omp_orig))
-
-#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
-	for (size_t n = 0; n < N; n++) {
-		for (size_t s1 = 0; s1 < 2; s1++) {
-			for (size_t m = 0; m < N; m++) {
-				for (size_t s2 = 0; s2 < 2; s2++) {
-					double dur;
-					struct timespec t0, t1;
-
-					struct mps G_psi; // (.5 * ζ_{μ,ν}) * (G_{μ, σ}G_{ν, σ'})|ᴪ>
-					{
-						struct mps b;
-
-						clock_gettime(CLOCK_MONOTONIC, &t0);
-						{
-							// G_{ν, σ'}
-							struct mps tmp;
-							const long off = index_to_g_offset(N, n, s1);
-							apply_and_compress(psi, &g[off][0], tol, max_vdim, &tmp);
-							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &b);
-							delete_mps(&tmp);
-						}
-						clock_gettime(CLOCK_MONOTONIC, &t1);
-						dur = (t1.tv_sec - t0.tv_sec);
-						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-
-#pragma omp critical
-						{
-							printf("apply;%f\n", dur);
-						}
-
-						double alpha; // ɑ = .5 * ζ_{μ,ν}
-						{
-							const long index[2] = {m, n};
-							const long offset = tensor_index_to_offset(zeta.ndim, zeta.dim, index);
-							alpha = 0.5 * ((double*)zeta.data)[offset];
-						}
-
-						clock_gettime(CLOCK_MONOTONIC, &t0);
-						scale_block_sparse_tensor(&alpha, &(b.a[0]));
-						clock_gettime(CLOCK_MONOTONIC, &t1);
-						dur = (t1.tv_sec - t0.tv_sec);
-						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-
-#pragma omp critical
-						{
-							printf("scale;%f\n", dur);
-						}
-
-						clock_gettime(CLOCK_MONOTONIC, &t0);
-						{
-							// G_{μ, σ}
-							struct mps tmp;
-							const long off = index_to_g_offset(N, m, s2);
-							apply_and_compress(&b, &g[off][0], tol, max_vdim, &tmp);
-							apply_and_compress(&tmp, &g[off][1], tol, max_vdim, &G_psi);
-							delete_mps(&tmp);
-						}
-						clock_gettime(CLOCK_MONOTONIC, &t1);
-						dur = (t1.tv_sec - t0.tv_sec);
-						dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-
-#pragma omp critical
-						{
-							printf("apply;%f\n", dur);
-						}
-
-						delete_mps(&b);
-					}
-
-					struct mps acc_nxt;
-					clock_gettime(CLOCK_MONOTONIC, &t0);
-					add_and_compress(&acc, &G_psi, tol, max_vdim, &acc_nxt);
-					clock_gettime(CLOCK_MONOTONIC, &t1);
-					dur = (t1.tv_sec - t0.tv_sec);
-					dur += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-
-#pragma omp critical
-					{
-						printf("add;%f\n", dur);
-					}
-
-					delete_mps(&acc); // delete old acc
-
-					acc = acc_nxt;
-
-					delete_mps(&G_psi);
-				}
-			}
-		}
-	} // implicit barrier
-
-	*phi = acc;
 }
