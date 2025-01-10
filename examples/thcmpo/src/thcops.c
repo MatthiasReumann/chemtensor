@@ -18,9 +18,8 @@
 
 void mps_add_combiner(struct mps* out, struct mps* in);
 void mps_add_initializer(struct mps* priv, struct mps* orig);
-void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret);
 void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret);
-void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos);
+void construct_thc_spin_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos);
 long index_to_g_offset(const long N, const size_t i, const size_t s);
 
 /// Public Interface
@@ -46,74 +45,72 @@ void construct_thc_spin_hamiltonian(const struct dense_tensor* tkin, struct dens
 	delete_dense_tensor(&vint);
 
 	// THC MPOs
-	construct_thc_mpos(chi, hamiltonian->thc_mpos);
+	construct_thc_spin_mpos(chi, hamiltonian->thc_mpos);
 }
 
-void apply_thc_hamiltonian(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
-	// Kinetic term
+/// @brief Compute H|psi> = T|psi> + V|psi> using THC MPOs
+/// @todo: T_psi and V_psi could be computed in parallel.
+void apply_thc_spin_hamiltonian(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
+	double trunc_scale;
+	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+
 	struct mps T_psi;
-	apply_and_compress(psi, &hamiltonian->T, tol, max_vdim, &T_psi);
-
-	// Coulomb Term (Initialize V_psi as 0-MPS with same quantum numbers)
 	struct mps V_psi;
-	const double alpha = 0.;
-	copy_mps(psi, &V_psi);
-	scale_block_sparse_tensor(&alpha, &V_psi.a[0]);
-	apply_thc_coulomb(hamiltonian, psi, tol, max_vdim, &V_psi);
 
-	// Add Kinetic and Coulomb
+	apply_mpo(&hamiltonian->T, psi, &T_psi); // Kinetic term
+	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, &T_psi, &trunc_scale, info);
+
+	apply_thc_spin_coulomb(hamiltonian, psi, tol, max_vdim, &V_psi); // Coulomb term
+
+	// Add individual terms
 	add_and_compress(&T_psi, &V_psi, tol, max_vdim, ret);
-
-	// Teardown
-	delete_mps(&T_psi);
-	delete_mps(&V_psi);
 }
 
-void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
+void apply_thc_spin_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
 	const long N = hamiltonian->thc_rank;
 	const struct dense_tensor* zeta = hamiltonian->zeta;
 #if defined(_OPENMP)
-	struct mps acc = *ret; // openmp reduction requires non-pointer type
+	struct mps acc = {.nsites = -1};
 
 #pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
 	initializer(mps_add_initializer(&omp_priv, &omp_orig))
-#pragma omp parallel for collapse(4) shared(psi) reduction(mpsReduceAdd : acc)
+#pragma omp parallel for collapse(4) shared(psi, hamiltonian) reduction(mpsReduceAdd : acc)
 	for (size_t n = 0; n < N; n++) {
 		for (size_t tau = 0; tau < 2; tau++) {
 			for (size_t m = 0; m < N; m++) {
 				for (size_t sigma = 0; sigma < 2; sigma++) {
-
 					struct mps full_layer_psi; // (.5 * ζ[μ, ν] * G[μ, σ, ν, τ])|ᴪ>
 					struct mps half_layer_psi; // (.5 * ζ[μ, ν] * G[ν, τ])|ᴪ>
 					struct mps tmp;
 
+					double trunc_scale;
+					struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+
 					{
 						const long off = index_to_g_offset(N, n, tau);
-						apply_and_compress(psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
-						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &half_layer_psi);
+						apply_mpo(&hamiltonian->thc_mpos[off], psi, &tmp);
+						apply_mpo(&hamiltonian->thc_mpos[off + 1], &tmp, &half_layer_psi);
+						mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, &half_layer_psi, &trunc_scale, info);
+						delete_mps(&tmp);
+					}
+
+					{
+						const long off = index_to_g_offset(N, m, sigma);
+						apply_mpo(&hamiltonian->thc_mpos[off], &half_layer_psi, &tmp);
+						apply_mpo(&hamiltonian->thc_mpos[off + 1], &tmp, &full_layer_psi);
+						mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, &full_layer_psi, &trunc_scale, info);
 						delete_mps(&tmp);
 					}
 
 					const long alpha_idx[2] = {m, n};
 					const long alpha_off = tensor_index_to_offset(zeta->ndim, zeta->dim, alpha_idx);
 					const double alpha = 0.5 * ((double*)zeta->data)[alpha_off]; // ɑ = .5 * ζ[μ, ν]
-					scale_block_sparse_tensor(&alpha, &(half_layer_psi.a[0]));
+					scale_block_sparse_tensor(&alpha, &(full_layer_psi.a[0]));
 
-					{
-						const long off = index_to_g_offset(N, m, sigma);
-						apply_and_compress(&half_layer_psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
-						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &full_layer_psi);
-						delete_mps(&tmp);
-					}
+					mps_add_combiner(&acc, &full_layer_psi);
 
+					ct_free(info);
 					delete_mps(&half_layer_psi);
-
-					struct mps acc_nxt;
-					add_and_compress(&acc, &full_layer_psi, tol, max_vdim, &acc_nxt);
-					delete_mps(&full_layer_psi);
-					delete_mps(&acc);
-
-					move_mps_data(&acc_nxt, &acc);
 				}
 			}
 		}
@@ -121,6 +118,9 @@ void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const str
 
 	move_mps_data(&acc, ret);
 #else
+	double trunc_scale;
+	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
+
 	for (size_t n = 0; n < N; n++) {
 		for (size_t tau = 0; tau < 2; tau++) {
 			struct mps half_layer_psi; // (.5 * ζ[μ, ν] * G[ν, τ])|ᴪ>
@@ -128,8 +128,9 @@ void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const str
 			{
 				struct mps tmp;
 				const long off = index_to_g_offset(N, n, tau);
-				apply_and_compress(psi, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
-				apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &half_layer_psi);
+				apply_mpo(&hamiltonian->thc_mpos[off], psi, &tmp);
+				apply_mpo(&hamiltonian->thc_mpos[off + 1], &tmp, &half_layer_psi);
+				mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, &half_layer_psi, &trunc_scale, info);
 				delete_mps(&tmp);
 			}
 
@@ -149,13 +150,15 @@ void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const str
 					{
 						struct mps tmp;
 						const long off = index_to_g_offset(N, m, sigma);
-						apply_and_compress(&half_layer_psi_copy, &hamiltonian->thc_mpos[off], tol, max_vdim, &tmp);
-						apply_and_compress(&tmp, &hamiltonian->thc_mpos[off + 1], tol, max_vdim, &full_layer_psi);
+						apply_mpo(&hamiltonian->thc_mpos[off], &half_layer_psi, &tmp);
+						apply_mpo(&hamiltonian->thc_mpos[off + 1], &tmp, &full_layer_psi);
+						mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, &full_layer_psi, &trunc_scale, info);
 						delete_mps(&tmp);
 					}
 
 					struct mps acc_nxt;
 					add_and_compress(ret, &full_layer_psi, tol, max_vdim, &acc_nxt);
+
 					delete_mps(&full_layer_psi);
 					delete_mps(ret);
 
@@ -174,28 +177,21 @@ void apply_thc_coulomb(const struct thc_spin_hamiltonian* hamiltonian, const str
 /// Helper implementations
 
 void mps_add_combiner(struct mps* out, struct mps* in) {
-	struct mps ret;
-	add_and_compress(out, in, 1e-20, LONG_MAX, &ret); // TODO: Specify parameters via preprocessor.
+	if (out->nsites == -1) { // uninitialized state
+		move_mps_data(in, out);
+	} else {
+		struct mps ret;	
+		add_and_compress(out, in, 0, 1024, &ret); // TODO: Specify parameters via preprocessor
 
-	delete_mps(out);
-	delete_mps(in);
+		delete_mps(out);
+		delete_mps(in);
 
-	*out = ret;
+		move_mps_data(&ret, out);
+	}
 }
 
 void mps_add_initializer(struct mps* priv, struct mps* orig) {
-	copy_mps(orig, priv);
-}
-
-void apply_and_compress(const struct mps* psi, const struct mpo* mpo, const double tol, const long max_vdim, struct mps* ret) {
-	double norm;
-	double trunc_scale;
-	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-
-	apply_mpo(mpo, psi, ret);
-	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
-
-	ct_free(info);
+	priv->nsites = orig->nsites;
 }
 
 void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
@@ -409,7 +405,7 @@ void construct_thc_mpo_assembly(const int nsites, const double* chi_row, const b
 	assert(mpo_graph_is_consistent(&assembly->graph));
 }
 
-void construct_thc_mpo_assembly_4d(const int nsites, const double* chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly* assembly) {
+void construct_thc_spin_mpo_assembly(const int nsites, const double* chi_row, const bool is_creation, const bool is_spin_up, struct mpo_assembly* assembly) {
 	// physical quantum numbers (particle number)
 	const long d = 4;
 
@@ -610,7 +606,7 @@ void construct_thc_mpo_assembly_4d(const int nsites, const double* chi_row, cons
 	delete_dense_tensor(&id);
 }
 
-void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos) {
+void construct_thc_spin_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos) {
 	const long N = chi->dim[0];
 	const long L = chi->dim[1];
 
@@ -625,8 +621,8 @@ void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos) {
 
 			const long g_off = index_to_g_offset(N, i, 0);
 
-			construct_thc_mpo_assembly_4d(L, chi_row, false, true, &assembly_p);
-			construct_thc_mpo_assembly_4d(L, chi_row, true, true, &assembly_q);
+			construct_thc_spin_mpo_assembly(L, chi_row, false, true, &assembly_p);
+			construct_thc_spin_mpo_assembly(L, chi_row, true, true, &assembly_q);
 
 			mpo_from_assembly(&assembly_p, &thc_mpos[g_off]);
 			mpo_from_assembly(&assembly_q, &thc_mpos[g_off + 1]);
@@ -641,8 +637,8 @@ void construct_thc_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos) {
 
 			const long g_off = index_to_g_offset(N, i, 1);
 
-			construct_thc_mpo_assembly_4d(L, chi_row, false, false, &assembly_p);
-			construct_thc_mpo_assembly_4d(L, chi_row, true, false, &assembly_q);
+			construct_thc_spin_mpo_assembly(L, chi_row, false, false, &assembly_p);
+			construct_thc_spin_mpo_assembly(L, chi_row, true, false, &assembly_q);
 
 			mpo_from_assembly(&assembly_p, &thc_mpos[g_off]);
 			mpo_from_assembly(&assembly_q, &thc_mpos[g_off + 1]);

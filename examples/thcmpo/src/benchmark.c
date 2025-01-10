@@ -41,8 +41,8 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 	copy_mps(start, &psi);
 	for (size_t i = 0; i < K; i++) {
 		struct mps ret;
-		apply_thc_hamiltonian(&hamiltonian, &psi, tol, max_vdim, &ret);
-		
+		apply_thc_spin_hamiltonian(&hamiltonian, &psi, tol, max_vdim, &ret);
+
 		delete_mps(&psi);
 		move_mps_data(&ret, &psi);
 	}
@@ -53,18 +53,11 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 		{
 			struct timespec t0, t1;
 
-			// Initialize as '0' MPS.
-			const double alpha = 0.;
-			copy_mps(&psi, &v_psi);
-			scale_block_sparse_tensor(&alpha, &v_psi.a[0]);
-
 			clock_gettime(CLOCK_MONOTONIC, &t0);
-			apply_thc_coulomb(&hamiltonian, &psi, tol, max_vdim, &v_psi);
+			apply_thc_spin_coulomb(&hamiltonian, &psi, tol, max_vdim, &v_psi);
 			clock_gettime(CLOCK_MONOTONIC, &t1);
 
-			double t = (t1.tv_sec - t0.tv_sec);
-			t += (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-			sum_t += t;
+			sum_t += (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
 		}
 		delete_mps(&v_psi);
 	}
