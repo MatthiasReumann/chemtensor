@@ -194,13 +194,105 @@ void mps_add_initializer(struct mps* priv, struct mps* orig) {
 	priv->nsites = orig->nsites;
 }
 
+/// @brief Compress and orthonormalize an MPS by site-local SVDs and singular value truncations.
+/// @note of 'mps_compress' but qr decomposition removed.
+int mps_compress_no_qr(const double tol, const long max_vdim,
+					   struct mps* mps, double* restrict trunc_scale, struct trunc_info* info) {
+	const bool renormalize = false;
+
+	for (int i = 0; i < mps->nsites - 1; i++) {
+		int ret = mps_local_orthonormalize_left_svd(tol, max_vdim, renormalize, &mps->a[i], &mps->a[i + 1], &info[i]);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	// last tensor
+	const int i = mps->nsites - 1;
+	assert(mps->a[i].dim_logical[2] == 1);
+
+	// create a dummy "tail" tensor
+	const long dim_tail[3] = {mps->a[i].dim_logical[2], 1, mps->a[i].dim_logical[2]};
+	const enum tensor_axis_direction axis_dir_tail[3] = {TENSOR_AXIS_OUT, TENSOR_AXIS_OUT, TENSOR_AXIS_IN};
+	qnumber qsite_tail[1] = {0};
+	const qnumber* qnums_tail[3] = {mps->a[i].qnums_logical[2], qsite_tail, mps->a[i].qnums_logical[2]};
+	struct block_sparse_tensor a_tail;
+	allocate_block_sparse_tensor(mps->a[i].dtype, 3, dim_tail, axis_dir_tail, qnums_tail, &a_tail);
+	assert(a_tail.dim_blocks[0] == 1 && a_tail.dim_blocks[1] == 1 && a_tail.dim_blocks[2] == 1);
+	// set single entry to 1
+	assert(a_tail.blocks[0] != NULL);
+	memcpy(a_tail.blocks[0]->data, numeric_one(a_tail.blocks[0]->dtype), sizeof_numeric_type(a_tail.blocks[0]->dtype));
+
+	// orthonormalize last MPS tensor
+	int ret = mps_local_orthonormalize_left_svd(tol, max_vdim, renormalize, &mps->a[i], &a_tail, &info[i]);
+	if (ret < 0) {
+		return ret;
+	}
+	assert(a_tail.dtype == mps->a[i].dtype);
+	assert(a_tail.dim_logical[0] == 1 && a_tail.dim_logical[1] == 1 && a_tail.dim_logical[2] == 1);
+	// quantum numbers for 'a_tail' should match due to preceeding QR orthonormalization
+	assert(a_tail.blocks[0] != NULL);
+	switch (a_tail.blocks[0]->dtype) {
+	case CT_SINGLE_REAL: {
+		float d = *((float*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		if (d < 0) {
+			scale_block_sparse_tensor(numeric_neg_one(CT_SINGLE_REAL), &mps->a[i]);
+		}
+		(*trunc_scale) = fabsf(d);
+		break;
+	}
+	case CT_DOUBLE_REAL: {
+		double d = *((double*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		if (d < 0) {
+			scale_block_sparse_tensor(numeric_neg_one(CT_DOUBLE_REAL), &mps->a[i]);
+		}
+		(*trunc_scale) = fabs(d);
+		break;
+	}
+	case CT_SINGLE_COMPLEX: {
+		scomplex d = *((scomplex*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		float abs_d = cabsf(d);
+		if (abs_d != 0) {
+			scomplex phase = d / abs_d;
+			scale_block_sparse_tensor(&phase, &mps->a[i]);
+		}
+		(*trunc_scale) = abs_d;
+		break;
+	}
+	case CT_DOUBLE_COMPLEX: {
+		dcomplex d = *((dcomplex*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		double abs_d = cabs(d);
+		if (abs_d != 0) {
+			dcomplex phase = d / abs_d;
+			scale_block_sparse_tensor(&phase, &mps->a[i]);
+		}
+		(*trunc_scale) = abs_d;
+		break;
+	}
+	default: {
+		// unknown data type
+		assert(false);
+	}
+	}
+
+	delete_block_sparse_tensor(&a_tail);
+
+	return 0;
+}
+
 void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
-	double norm;
+	// double norm;
 	double trunc_scale;
 	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
 
 	mps_add(phi, psi, ret);
-	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
+	mps_compress_no_qr(tol, max_vdim, ret, &trunc_scale, info);
+	rscale_block_sparse_tensor(&trunc_scale, &ret->a[0]);
+	// mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
 
 	ct_free(info);
 }

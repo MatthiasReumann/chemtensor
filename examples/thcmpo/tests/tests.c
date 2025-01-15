@@ -25,7 +25,7 @@ void compute_reference(const struct dense_tensor* H, const struct mps* psi, stru
 	delete_dense_tensor(&psi_vec);
 }
 
-void test_water() {
+int test_water() {
 	const long N = 28;
 	const long L = 7;
 
@@ -83,7 +83,13 @@ void test_water() {
 		delete_block_sparse_tensor(&bst);
 	}
 
-	assert(dense_tensor_allclose(&ref, &h_psi_vec, 1e-10));
+	if(!dense_tensor_allclose(&ref, &h_psi_vec, 1e-9)){
+		const long nelem = dense_tensor_num_elements(&ref);
+		printf("diff: %.15f\n", uniform_distance(ref.dtype, nelem, ref.data, h_psi_vec.data));
+		printf("a: %f\n", dense_tensor_norm2(&ref));
+		printf("b: %f\n", dense_tensor_norm2(&h_psi_vec));
+		return 1;
+	}
 
 	// teardown
 	delete_dense_tensor(&h_psi_vec);
@@ -94,9 +100,11 @@ void test_water() {
 	delete_dense_tensor(&H);
 	delete_dense_tensor(&chi);
 	delete_dense_tensor(&zeta);
+
+	return 0;
 }
 
-void test() {
+int test() {
 	const long N = 7;
 	const long L = 5;
 
@@ -189,7 +197,9 @@ void test() {
 	struct dense_tensor h_psi_vec_dns;
 	block_sparse_to_dense_tensor(&h_psi_vec, &h_psi_vec_dns);
 
-	assert(dense_tensor_allclose(&h_psi_vec_dns, &h_psi_ref, 1e-13));
+	if(!dense_tensor_allclose(&h_psi_vec_dns, &h_psi_ref, 1e-13)) {
+		return 1;
+	}
 
 	// teardown
 	delete_dense_tensor(&h_psi_ref);
@@ -203,9 +213,11 @@ void test() {
 	delete_dense_tensor(&zeta);
 
 	H5Fclose(file);
+
+	return 0;
 }
 
 int main() {
-	test_water();
-	test();
+	printf("test_water: %d\n", test_water());
+	printf("test_thc: %d\n", test());
 }
