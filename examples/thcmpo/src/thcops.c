@@ -181,7 +181,7 @@ void mps_add_combiner(struct mps* out, struct mps* in) {
 		move_mps_data(in, out);
 	} else {
 		struct mps ret;
-		add_and_compress(out, in, 0, 75, &ret); // TODO: Specify parameters via preprocessor
+		add_and_compress(out, in, 0, 250, &ret); // TODO: Specify parameters via preprocessor
 
 		delete_mps(out);
 		delete_mps(in);
