@@ -37,6 +37,7 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 	struct thc_spin_hamiltonian hamiltonian;
 	construct_thc_spin_hamiltonian(&tkin, &zeta, &chi, &hamiltonian);
 
+	printf("setup\n");
 	struct mps psi; // H^{K}|start>
 	copy_mps(start, &psi);
 	for (size_t i = 0; i < K; i++) {
@@ -46,6 +47,7 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 		delete_mps(&psi);
 		move_mps_data(&ret, &psi);
 	}
+	printf("start benchmark\n");
 
 	double sum_t = 0.;
 	for (size_t i = 0; i < REPEATS; i++) {

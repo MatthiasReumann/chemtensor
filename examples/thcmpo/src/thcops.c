@@ -181,7 +181,7 @@ void mps_add_combiner(struct mps* out, struct mps* in) {
 		move_mps_data(in, out);
 	} else {
 		struct mps ret;
-		add_and_compress(out, in, 0, 250, &ret); // TODO: Specify parameters via preprocessor
+		add_and_compress(out, in, 0, 75, &ret); // TODO: Specify parameters via preprocessor
 
 		delete_mps(out);
 		delete_mps(in);
@@ -195,7 +195,7 @@ void mps_add_initializer(struct mps* priv, struct mps* orig) {
 }
 
 /// @brief Compress and orthonormalize an MPS by site-local SVDs and singular value truncations.
-/// @note of 'mps_compress' but qr decomposition removed.
+/// @note Copy of 'mps_compress' but qr decomposition removed.
 int mps_compress_no_qr(const double tol, const long max_vdim,
 					   struct mps* mps, double* restrict trunc_scale, struct trunc_info* info) {
 	const bool renormalize = false;
@@ -285,14 +285,12 @@ int mps_compress_no_qr(const double tol, const long max_vdim,
 }
 
 void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret) {
-	// double norm;
 	double trunc_scale;
 	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
-
+	
 	mps_add(phi, psi, ret);
 	mps_compress_no_qr(tol, max_vdim, ret, &trunc_scale, info);
 	rscale_block_sparse_tensor(&trunc_scale, &ret->a[0]);
-	// mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
 
 	ct_free(info);
 }
