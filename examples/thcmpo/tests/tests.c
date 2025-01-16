@@ -30,7 +30,7 @@ int test_water() {
 	const long L = 7;
 
 	const double TOL = 0;
-	const long MAX_VDIM = 1024;
+	const long MAX_VDIM = 250;
 
 	struct dense_tensor zeta; // ζ
 	{
@@ -109,7 +109,7 @@ int test() {
 	const long L = 5;
 
 	const double TOL = 0;
-	const long MAX_VDIM = 1024;
+	const long MAX_VDIM = 250;
 
 	hid_t file = H5Fopen("../test/algorithm/data/test_apply_thc_spin_molecular_hamiltonian.hdf5", H5F_ACC_RDONLY, H5P_DEFAULT);
 	assert(file >= 0);

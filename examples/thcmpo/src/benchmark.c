@@ -40,12 +40,14 @@ void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, c
 	printf("setup\n");
 	struct mps psi; // H^{K}|start>
 	copy_mps(start, &psi);
+	print_mps(psi);
 	for (size_t i = 0; i < K; i++) {
 		struct mps ret;
 		apply_thc_spin_hamiltonian(&hamiltonian, &psi, tol, max_vdim, &ret);
 
 		delete_mps(&psi);
 		move_mps_data(&ret, &psi);
+		print_mps(psi);
 	}
 	printf("start benchmark\n");
 

@@ -48,14 +48,14 @@ void print_mps(struct mps mps) {
 		print_dt(dt);
 
 		// print quantum numbers
-		for (size_t d = 0; d < mps.a[i].ndim; d++) {
-            qnumber* qnums = mps.a[i].qnums_blocks[d];
-            printf("\tqnums[%zu]=(", d);
-			for (size_t j = 0; j < mps.a[i].dim_logical[d]; j++) {
-				printf(" %d ", qnums[j]);
-			}
-            printf(")\n");
-		}
+		// for (size_t d = 0; d < mps.a[i].ndim; d++) {
+        //     qnumber* qnums = mps.a[i].qnums_blocks[d];
+        //     printf("\tqnums[%zu]=(", d);
+		// 	for (size_t j = 0; j < mps.a[i].dim_logical[d]; j++) {
+		// 		printf(" %d ", qnums[j]);
+		// 	}
+        //     printf(")\n");
+		// }
 	}
 }
 
