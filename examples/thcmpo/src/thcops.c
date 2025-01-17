@@ -181,7 +181,7 @@ void mps_add_combiner(struct mps* out, struct mps* in) {
 		move_mps_data(in, out);
 	} else {
 		struct mps ret;
-		add_and_compress(out, in, 0, 250, &ret); // TODO: Specify parameters via preprocessor
+		add_and_compress(out, in, 0, 75, &ret); // TODO: Specify parameters via preprocessor
 
 		delete_mps(out);
 		delete_mps(in);
@@ -233,57 +233,52 @@ int mps_compress_no_qr(const double tol, const long max_vdim,
 	assert(a_tail.dim_logical[0] == 1 && a_tail.dim_logical[1] == 1 && a_tail.dim_logical[2] == 1);
 	// quantum numbers for 'a_tail' should match due to preceeding QR orthonormalization // <--- (???)
 
-	if (a_tail.blocks[0] == NULL) {
-		printf("hello\n");
-		(*trunc_scale) = 1.0;
-	} else {
-		assert(a_tail.blocks[0] != NULL);
-		switch (a_tail.blocks[0]->dtype) {
-		case CT_SINGLE_REAL: {
-			float d = *((float*)a_tail.blocks[0]->data);
-			// absorb potential phase factor into MPS tensor
-			if (d < 0) {
-				scale_block_sparse_tensor(numeric_neg_one(CT_SINGLE_REAL), &mps->a[i]);
-			}
-			(*trunc_scale) = fabsf(d);
-			break;
+	assert(a_tail.blocks[0] != NULL);
+	switch (a_tail.blocks[0]->dtype) {
+	case CT_SINGLE_REAL: {
+		float d = *((float*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		if (d < 0) {
+			scale_block_sparse_tensor(numeric_neg_one(CT_SINGLE_REAL), &mps->a[i]);
 		}
-		case CT_DOUBLE_REAL: {
-			double d = *((double*)a_tail.blocks[0]->data);
-			// absorb potential phase factor into MPS tensor
-			if (d < 0) {
-				scale_block_sparse_tensor(numeric_neg_one(CT_DOUBLE_REAL), &mps->a[i]);
-			}
-			(*trunc_scale) = fabs(d);
-			break;
+		(*trunc_scale) = fabsf(d);
+		break;
+	}
+	case CT_DOUBLE_REAL: {
+		double d = *((double*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		if (d < 0) {
+			scale_block_sparse_tensor(numeric_neg_one(CT_DOUBLE_REAL), &mps->a[i]);
 		}
-		case CT_SINGLE_COMPLEX: {
-			scomplex d = *((scomplex*)a_tail.blocks[0]->data);
-			// absorb potential phase factor into MPS tensor
-			float abs_d = cabsf(d);
-			if (abs_d != 0) {
-				scomplex phase = d / abs_d;
-				scale_block_sparse_tensor(&phase, &mps->a[i]);
-			}
-			(*trunc_scale) = abs_d;
-			break;
+		(*trunc_scale) = fabs(d);
+		break;
+	}
+	case CT_SINGLE_COMPLEX: {
+		scomplex d = *((scomplex*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		float abs_d = cabsf(d);
+		if (abs_d != 0) {
+			scomplex phase = d / abs_d;
+			scale_block_sparse_tensor(&phase, &mps->a[i]);
 		}
-		case CT_DOUBLE_COMPLEX: {
-			dcomplex d = *((dcomplex*)a_tail.blocks[0]->data);
-			// absorb potential phase factor into MPS tensor
-			double abs_d = cabs(d);
-			if (abs_d != 0) {
-				dcomplex phase = d / abs_d;
-				scale_block_sparse_tensor(&phase, &mps->a[i]);
-			}
-			(*trunc_scale) = abs_d;
-			break;
+		(*trunc_scale) = abs_d;
+		break;
+	}
+	case CT_DOUBLE_COMPLEX: {
+		dcomplex d = *((dcomplex*)a_tail.blocks[0]->data);
+		// absorb potential phase factor into MPS tensor
+		double abs_d = cabs(d);
+		if (abs_d != 0) {
+			dcomplex phase = d / abs_d;
+			scale_block_sparse_tensor(&phase, &mps->a[i]);
 		}
-		default: {
-			// unknown data type
-			assert(false);
-		}
-		}
+		(*trunc_scale) = abs_d;
+		break;
+	}
+	default: {
+		// unknown data type
+		assert(false);
+	}
 	}
 
 	delete_block_sparse_tensor(&a_tail);
@@ -297,7 +292,7 @@ void add_and_compress(const struct mps* phi, const struct mps* psi, const double
 
 	mps_add(phi, psi, ret);
 	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
-	
+
 	// mps_compress_no_qr(tol, max_vdim, ret, &trunc_scale, info);
 	// rscale_block_sparse_tensor(&trunc_scale, &ret->a[ret->nsites - 1]);
 

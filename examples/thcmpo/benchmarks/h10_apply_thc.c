@@ -9,7 +9,7 @@ int main() {
 	const long L = 10;
 
 	const double TOL = 0;
-	const long MAX_VDIM = 250;
+	const long MAX_VDIM = 75;
 
 	struct mps hfs; // hartree fock state
 	const unsigned spin_state[] = {3, 3, 3, 3, 3, 0, 0, 0, 0, 0};
