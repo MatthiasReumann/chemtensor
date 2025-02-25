@@ -1,4 +1,7 @@
 #include <stdio.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 typedef char* (*test_function)();
@@ -11,6 +14,7 @@ struct test
 };
 
 
+char* test_tensor_index_to_offset();
 char* test_dense_tensor_trace();
 char* test_dense_tensor_cyclic_partial_trace();
 char* test_dense_tensor_transpose();
@@ -49,8 +53,14 @@ char* test_block_sparse_tensor_get_entry();
 char* test_clebsch_gordan_coefficients();
 char* test_su2_tree_enumerate_charge_sectors();
 char* test_su2_fuse_split_tree_enumerate_charge_sectors();
+char* test_su2_graph_to_fuse_split_tree();
+char* test_su2_graph_yoga_to_simple_subtree();
+char* test_su2_graph_connect();
 char* test_su2_tensor_fmove();
+char* test_su2_tensor_fuse_axes();
+char* test_su2_tensor_split_axis();
 char* test_su2_tensor_contract_simple();
+char* test_su2_tensor_contract_yoga();
 char* test_su2_to_dense_tensor();
 char* test_copy_mps();
 char* test_mps_vdot();
@@ -102,7 +112,14 @@ char* test_thc_spin_molecular_hamiltonian_to_matrix();
 
 int main()
 {
+	#ifdef _OPENMP
+	printf("maximum number of OpenMP threads: %d\n", omp_get_max_threads());
+	#else
+	printf("OpenMP not available\n");
+	#endif
+
 	struct test tests[] = {
+		TEST_FUNCTION_ENTRY(test_tensor_index_to_offset),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_trace),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_cyclic_partial_trace),
 		TEST_FUNCTION_ENTRY(test_dense_tensor_transpose),
@@ -141,8 +158,14 @@ int main()
 		TEST_FUNCTION_ENTRY(test_clebsch_gordan_coefficients),
 		TEST_FUNCTION_ENTRY(test_su2_tree_enumerate_charge_sectors),
 		TEST_FUNCTION_ENTRY(test_su2_fuse_split_tree_enumerate_charge_sectors),
+		TEST_FUNCTION_ENTRY(test_su2_graph_to_fuse_split_tree),
+		TEST_FUNCTION_ENTRY(test_su2_graph_yoga_to_simple_subtree),
+		TEST_FUNCTION_ENTRY(test_su2_graph_connect),
 		TEST_FUNCTION_ENTRY(test_su2_tensor_fmove),
+		TEST_FUNCTION_ENTRY(test_su2_tensor_fuse_axes),
+		TEST_FUNCTION_ENTRY(test_su2_tensor_split_axis),
 		TEST_FUNCTION_ENTRY(test_su2_tensor_contract_simple),
+		TEST_FUNCTION_ENTRY(test_su2_tensor_contract_yoga),
 		TEST_FUNCTION_ENTRY(test_su2_to_dense_tensor),
 		TEST_FUNCTION_ENTRY(test_mps_vdot),
 		TEST_FUNCTION_ENTRY(test_mps_add),

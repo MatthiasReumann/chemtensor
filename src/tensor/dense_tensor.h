@@ -70,6 +70,21 @@ static inline long tensor_index_to_offset(const int ndim, const long* restrict d
 
 //________________________________________________________________________________________________________________________
 ///
+/// \brief Convert data offset to tensor index.
+///
+static inline void offset_to_tensor_index(const int ndim, const long* restrict dim, const long offset, long* restrict index)
+{
+	long n = offset;
+	for (int i = ndim - 1; i >= 0; i--)
+	{
+		index[i] = n % dim[i];
+		n /= dim[i];
+	}
+}
+
+
+//________________________________________________________________________________________________________________________
+///
 /// \brief Compute the lexicographically next tensor index.
 ///
 static inline void next_tensor_index(const int ndim, const long* restrict dim, long* restrict index)
@@ -115,6 +130,8 @@ void rscale_dense_tensor(const void* alpha, struct dense_tensor* t);
 void reshape_dense_tensor(const int ndim, const long* dim, struct dense_tensor* t);
 
 void conjugate_dense_tensor(struct dense_tensor* t);
+
+void dense_tensor_flatten_axes(struct dense_tensor* t, const int i_ax);
 
 void dense_tensor_set_identity(struct dense_tensor* t);
 

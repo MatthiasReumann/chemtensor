@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "su2_recoupling.h"
+#include "util.h"
 
 
 // format: su2_recoupling_ja_jb_jc_js[n][n]
@@ -436,28 +437,9 @@ static const double* su2_recoupling_table[5][5][5][13] = { { { { (const double*)
 
 //________________________________________________________________________________________________________________________
 ///
-/// \brief Minimum of two quantum numbers.
-///
-static inline qnumber qmin(const qnumber a, const qnumber b)
-{
-	return (a <= b) ? a : b;
-}
-
-//________________________________________________________________________________________________________________________
-///
-/// \brief Maximum of two quantum numbers.
-///
-static inline qnumber qmax(const qnumber a, const qnumber b)
-{
-	return (a >= b) ? a : b;
-}
-
-
-//________________________________________________________________________________________________________________________
-///
 /// \brief Retrieve the SU(2) recoupling coefficient for the provided 'j' quantum numbers (represented times 2).
 ///
-double su_recoupling_coefficient(const qnumber ja, const qnumber jb, const qnumber jc, const qnumber js, const qnumber je, const qnumber jf)
+double su2_recoupling_coefficient(const qnumber ja, const qnumber jb, const qnumber jc, const qnumber js, const qnumber je, const qnumber jf)
 {
 	if ((ja + jb + jc + js) % 2 != 0) {
 		return 0;

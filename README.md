@@ -1,4 +1,4 @@
-[![Unit tests](https://github.com/qc-tum/chemtensor/actions/workflows/main.yml/badge.svg)](https://github.com/qc-tum/chemtensor/actions/workflows/main.yml)
+[![CI](https://github.com/qc-tum/chemtensor/actions/workflows/ci.yml/badge.svg)](https://github.com/qc-tum/chemtensor/actions/workflows/ci.yml)
 
 
 ChemTensor
@@ -26,6 +26,19 @@ Features
 - Gradient computation with respect to MPO parameters
 - Tree tensor network topologies (work in progress)
 - Non-abelian symmetries (work in progress)
+
+
+Installation
+------------
+ChemTensor can be conveniently installed as Python package (in a virtual environment) via
+```bash
+(venv) $ pip install chemtensor
+```
+This downloads and installs a pre-built Python "wheel" from PyPI, see [pypi.org/project/chemtensor/](https://pypi.org/project/chemtensor/).
+
+Alternatively, you can build the project locally; see the instructions below.
+
+Note that ChemTensor can also run as standalone C code.
 
 
 Building

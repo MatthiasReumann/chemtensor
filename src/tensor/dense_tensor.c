@@ -448,6 +448,28 @@ void conjugate_dense_tensor(struct dense_tensor* t)
 
 //________________________________________________________________________________________________________________________
 ///
+/// \brief Flatten the two neighboring axes (tensor legs) 'i_ax' and 'i_ax + 1' into a single axis.
+///
+void dense_tensor_flatten_axes(struct dense_tensor* t, const int i_ax)
+{
+	assert(0 <= i_ax && i_ax + 1 < t->ndim);
+
+	// new dimensions
+	long* new_dim = ct_malloc((t->ndim - 1) * sizeof(long));
+	for (int i = 0; i < i_ax; i++) {
+		new_dim[i] = t->dim[i];
+	}
+	new_dim[i_ax] = t->dim[i_ax] * t->dim[i_ax + 1];
+	for (int i = i_ax + 1; i < t->ndim - 1; i++) {
+		new_dim[i] = t->dim[i + 1];
+	}
+
+	reshape_dense_tensor(t->ndim - 1, new_dim, t);
+}
+
+
+//________________________________________________________________________________________________________________________
+///
 /// \brief Set the tensor to the identity operator; all dimensions of the tensor must agree.
 ///
 void dense_tensor_set_identity(struct dense_tensor* t)
@@ -715,6 +737,7 @@ void transpose_dense_tensor(const int* restrict perm, const struct dense_tensor*
 	}
 
 	// ensure that 'perm' is a valid permutation
+	#ifndef NDEBUG
 	int* ax_list = ct_calloc(t->ndim, sizeof(int));
 	for (int i = 0; i < t->ndim; i++)
 	{
@@ -726,6 +749,7 @@ void transpose_dense_tensor(const int* restrict perm, const struct dense_tensor*
 		assert(ax_list[i] == 1);
 	}
 	ct_free(ax_list);
+	#endif
 
 	// dimensions of new tensor 'r'
 	long* rdim = ct_malloc(t->ndim * sizeof(long));
@@ -1347,7 +1371,7 @@ void dense_tensor_multiply_axis_update(const void* alpha, const struct dense_ten
 	// trailing dimension of 't' as a matrix
 	const long tdt = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? integer_product(&t->dim[1], t->ndim - 1) : t->dim[t->ndim - 1]);
 
-	const CBLAS_TRANSPOSE transa = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
+	const int transa = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
 
 	const long m = integer_product(&r->dim[i_ax], t->ndim - 1);
 	const long k = s->dim[i_ax];
@@ -1454,8 +1478,8 @@ void dense_tensor_dot(const struct dense_tensor* restrict s, const enum tensor_a
 	// trailing dimension of 't' as a matrix
 	const long tdt = integer_product(&t->dim[nldt], t->ndim - nldt);
 
-	const CBLAS_TRANSPOSE transa = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
-	const CBLAS_TRANSPOSE transb = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasNoTrans : CblasTrans);
+	const int transa = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
+	const int transb = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasNoTrans : CblasTrans);
 
 	// matrix-matrix multiplication
 	const long m = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? tds : lds);
@@ -1545,8 +1569,8 @@ void dense_tensor_dot_update(const void* alpha, const struct dense_tensor* restr
 	// trailing dimension of 't' as a matrix
 	const long tdt = integer_product(&t->dim[nldt], t->ndim - nldt);
 
-	const CBLAS_TRANSPOSE transa = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
-	const CBLAS_TRANSPOSE transb = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasNoTrans : CblasTrans);
+	const int transa = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? CblasTrans : CblasNoTrans);
+	const int transb = (axrange_t == TENSOR_AXIS_RANGE_LEADING ? CblasNoTrans : CblasTrans);
 
 	// matrix-matrix multiplication
 	const long m = (axrange_s == TENSOR_AXIS_RANGE_LEADING ? tds : lds);
@@ -1776,6 +1800,7 @@ void dense_tensor_concatenate_fill(const struct dense_tensor* restrict tlist, co
 	assert(r->dtype == tlist[0].dtype);
 	assert(r->ndim  == tlist[0].ndim);
 	assert(0 <= i_ax && i_ax < r->ndim);
+	#ifndef NDEBUG
 	for (int j = 0; j < num_tensors - 1; j++)
 	{
 		// data types must match
@@ -1797,6 +1822,7 @@ void dense_tensor_concatenate_fill(const struct dense_tensor* restrict tlist, co
 	{
 		assert(r->dim[i] == (i == i_ax ? dim_concat : tlist[0].dim[i]));
 	}
+	#endif
 
 	// leading dimensions
 	const long ld = integer_product(r->dim, i_ax);
@@ -1892,6 +1918,7 @@ void dense_tensor_block_diag_fill(const struct dense_tensor* restrict tlist, con
 		i_ax_indicator[i_ax[i]] = true;
 	}
 
+	#ifndef NDEBUG
 	for (int j = 0; j < num_tensors - 1; j++)
 	{
 		// data types must match
@@ -1918,6 +1945,7 @@ void dense_tensor_block_diag_fill(const struct dense_tensor* restrict tlist, con
 			assert(r->dim[i] == tlist[0].dim[i]);
 		}
 	}
+	#endif
 
 	// effective dimensions used for indexing tensor slices
 	int ndim_eff = 0;
