@@ -252,8 +252,9 @@ void add_and_compress(const struct mps* phi, const struct mps* psi, const double
 	struct trunc_info* info = ct_calloc(psi->nsites, sizeof(struct trunc_info));
 
 	mps_add(phi, psi, ret);
-	mps_compress_no_qr(tol, max_vdim, ret, &trunc_scale, info);
-	rscale_block_sparse_tensor(&trunc_scale, &ret->a[ret->nsites - 1]);
+	mps_compress_rescale(tol, max_vdim, MPS_ORTHONORMAL_LEFT, ret, &trunc_scale, info);
+	// mps_compress_no_qr(tol, max_vdim, ret, &trunc_scale, info);
+	// rscale_block_sparse_tensor(&trunc_scale, &ret->a[ret->nsites - 1]);
 
 	ct_free(info);
 }
