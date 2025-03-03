@@ -261,7 +261,7 @@ void copy_block_sparse_tensor(const struct block_sparse_tensor* restrict src, st
 	// copy dense tensor blocks
 	const long nblocks = integer_product(src->dim_blocks, ndim);
 	dst->blocks = ct_calloc(nblocks, sizeof(struct dense_tensor*));
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		if (src->blocks[k] == NULL) {
@@ -345,7 +345,7 @@ double block_sparse_tensor_norm2(const struct block_sparse_tensor* t)
 	double nrm = 0;
 
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic) reduction(+: nrm)
+	// #pragma omp parallel for schedule(dynamic) reduction(+: nrm)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* b = t->blocks[k];
@@ -383,7 +383,7 @@ void block_sparse_tensor_reverse_axis_directions(struct block_sparse_tensor* t)
 void scale_block_sparse_tensor(const void* alpha, struct block_sparse_tensor* t)
 {
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// // #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* b = t->blocks[k];
@@ -403,7 +403,7 @@ void scale_block_sparse_tensor(const void* alpha, struct block_sparse_tensor* t)
 void rscale_block_sparse_tensor(const void* alpha, struct block_sparse_tensor* t)
 {
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* b = t->blocks[k];
@@ -426,7 +426,7 @@ void conjugate_block_sparse_tensor(struct block_sparse_tensor* t)
 	}
 
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* b = t->blocks[k];
@@ -465,7 +465,7 @@ void block_sparse_to_dense_tensor(const struct block_sparse_tensor* restrict s, 
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(s->dim_blocks, s->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		const struct dense_tensor* b = s->blocks[k];
@@ -609,7 +609,7 @@ void dense_to_block_sparse_tensor_entries(const struct dense_tensor* restrict t,
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(s->dim_blocks, s->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* b = s->blocks[k];
@@ -798,7 +798,7 @@ void transpose_block_sparse_tensor(const int* restrict perm, const struct block_
 	// dense tensor blocks
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
 	r->blocks = ct_calloc(nblocks, sizeof(struct dense_tensor*));
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		const struct dense_tensor* bt = t->blocks[k];
@@ -907,7 +907,7 @@ void block_sparse_tensor_flatten_axes(const struct block_sparse_tensor* restrict
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		const struct dense_tensor* bt = t->blocks[k];
@@ -1085,7 +1085,7 @@ void block_sparse_tensor_split_axis(const struct block_sparse_tensor* restrict t
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		const struct dense_tensor* br = r->blocks[k];
@@ -1238,7 +1238,7 @@ void block_sparse_tensor_slice(const struct block_sparse_tensor* restrict t, con
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* br = r->blocks[k];
@@ -1341,7 +1341,7 @@ void block_sparse_tensor_cyclic_partial_trace(const struct block_sparse_tensor* 
 	// for each block with matching quantum numbers...
 	const long nblocks_r = integer_product(r->dim_blocks, r->ndim);
 	const long nblocks_p = integer_product(t->dim_blocks, ndim_trace);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks_r; k++)
 	{
 		struct dense_tensor* br = r->blocks[k];
@@ -1391,7 +1391,7 @@ void block_sparse_tensor_scalar_multiply_add(const void* alpha, const struct blo
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(t->dim_blocks, t->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		const struct dense_tensor* bs = s->blocks[k];
@@ -1425,7 +1425,7 @@ void block_sparse_tensor_multiply_pointwise_vector(const struct block_sparse_ten
 
 	// for each block with matching quantum numbers...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* br = r->blocks[k];
@@ -1516,7 +1516,7 @@ void block_sparse_tensor_multiply_axis(const struct block_sparse_tensor* restric
 
 	// for each dense block of 'r'...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* br = r->blocks[k];
@@ -1694,7 +1694,7 @@ void block_sparse_tensor_dot(const struct block_sparse_tensor* restrict s, const
 
 	// for each dense block of 'r'...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long k = 0; k < nblocks; k++)
 	{
 		struct dense_tensor* br = r->blocks[k];
@@ -1842,7 +1842,7 @@ void block_sparse_tensor_concatenate(const struct block_sparse_tensor* restrict 
 
 	// for each dense block of 'r'...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long kr = 0; kr < nblocks; kr++)
 	{
 		struct dense_tensor* br = r->blocks[kr];
@@ -2056,7 +2056,7 @@ void block_sparse_tensor_block_diag(const struct block_sparse_tensor* restrict t
 
 	// for each dense block of 'r'...
 	const long nblocks = integer_product(r->dim_blocks, r->ndim);
-	#pragma omp parallel for schedule(dynamic)
+	// #pragma omp parallel for schedule(dynamic)
 	for (long kr = 0; kr < nblocks; kr++)
 	{
 		struct dense_tensor* br = r->blocks[kr];
@@ -2249,7 +2249,7 @@ int block_sparse_tensor_qr(const struct block_sparse_tensor* restrict a, struct 
 
 	// perform QR decompositions of the individual blocks
 	bool failed = false;
-	#pragma omp parallel for schedule(dynamic) collapse(2)
+	// #pragma omp parallel for schedule(dynamic) collapse(2)
 	for (long i = 0; i < a->dim_blocks[0]; i++)
 	{
 		for (long j = 0; j < a->dim_blocks[1]; j++)
@@ -2391,7 +2391,7 @@ int block_sparse_tensor_rq(const struct block_sparse_tensor* restrict a, struct 
 
 	// perform RQ decompositions of the individual blocks
 	bool failed = false;
-	#pragma omp parallel for schedule(dynamic) collapse(2)
+	// #pragma omp parallel for schedule(dynamic) collapse(2)
 	for (long i = 0; i < a->dim_blocks[0]; i++)
 	{
 		for (long j = 0; j < a->dim_blocks[1]; j++)
@@ -2539,7 +2539,7 @@ int block_sparse_tensor_svd(const struct block_sparse_tensor* restrict a, struct
 
 	// perform SVD decompositions of the individual blocks
 	bool failed = false;
-	#pragma omp parallel for schedule(dynamic) collapse(2)
+	// #pragma omp parallel for schedule(dynamic) collapse(2)
 	for (long i = 0; i < a->dim_blocks[0]; i++)
 	{
 		for (long j = 0; j < a->dim_blocks[1]; j++)
