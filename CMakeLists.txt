@@ -57,8 +57,8 @@ add_test(NAME chemtensor_test COMMAND chemtensor_test)
 # build THC MPO example / experiments
 file(GLOB THC_SOURCES "examples/thcmpo/src/*.c")
 file(GLOB THC_INCLUDE "examples/thcmpo/include")
-file(GLOB THC_BENCH_ENTRIES "examples/thcmpo/benchmarks/*.c")
-foreach(ENTRY IN LISTS THC_BENCH_ENTRIES)
+file(GLOB THC_EXEC_ENTRIES "examples/thcmpo/executables/*.c")
+foreach(ENTRY IN LISTS THC_EXEC_ENTRIES)
     get_filename_component(target_name ${ENTRY} NAME_WE) # filename without extension
     
     add_executable("${target_name}" ${CHEMTENSOR_SOURCES} ${THC_SOURCES} ${ENTRY})
