@@ -245,6 +245,25 @@ bool mps_is_consistent(const struct mps* mps)
 
 //________________________________________________________________________________________________________________________
 ///
+/// \brief Compare two MPSs for equality.
+///
+bool mps_equals(const struct mps* m1, const struct mps* m2) {
+	if (m1->nsites != m2->nsites || m1->d != m2->d || !qnumber_all_equal(m1->d, m1->qsite, m2->qsite)) {
+		return false;
+	}
+
+	for (int i = 0; i < m1->nsites; i++) {
+		if (!block_sparse_tensor_allclose(&m1->a[i], &m2->a[i], 0.)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+//________________________________________________________________________________________________________________________
+///
 /// \brief Contraction step from right to left of two MPS tensors,
 /// for example to compute the inner product of two matrix product states.
 ///
