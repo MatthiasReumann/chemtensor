@@ -291,10 +291,7 @@ int save_mps_hdf5(const struct mps* mps, const char* filename) {
 			return -1;
 		}
 
-		// if ((status = H5Tclose(dtype)) < 0) {
-		// 	fprintf(stderr, "H5Tclose() failed for %s, return value: %d\n", dset_name, status);
-		// 	return -1;
-		// }
+		H5Tclose(dtype);
 
 		// create attributes attached to tensor-{site} dataset
 		// - tensor axis directions:                axis_dir
