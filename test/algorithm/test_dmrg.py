@@ -2,9 +2,6 @@ import copy
 import numpy as np
 import h5py
 import pytenet as ptn
-import sys
-sys.path.append("../")
-from util import interleave_complex
 
 
 def _construct_random_hermitian_mpo(qd, nsites: int, rng: np.random.Generator):
@@ -85,7 +82,7 @@ def dmrg_singlesite_data():
     numsweeps = 6
 
     psi = copy.deepcopy(psi_start)
-    en_sweeps = ptn.calculate_ground_state_local_singlesite(H, psi, numsweeps)
+    en_sweeps = ptn.dmrg_singlesite(H, psi, numsweeps)
 
     # reference (numerically exact) ground state energy
     en_min = np.linalg.eigvalsh(Hmat)[0]
@@ -97,18 +94,18 @@ def dmrg_singlesite_data():
             file.attrs[f"h_qbond{i}"] = qbond
         for i, a in enumerate(H.A):
             # transposition due to different convention for axis ordering
-            file[f"h_a{i}"] = interleave_complex(a.transpose((2, 0, 1, 3)))
+            file[f"h_a{i}"] = a.transpose((2, 0, 1, 3))
         for i, qbond in enumerate(psi_start.qD):
             file.attrs[f"psi_start_qbond{i}"] = qbond
         for i, a in enumerate(psi_start.A):
             # transposition due to different convention for axis ordering
-            file[f"psi_start_a{i}"] = interleave_complex(a.transpose((1, 0, 2)))
+            file[f"psi_start_a{i}"] = a.transpose((1, 0, 2))
         file["en_sweeps"] = en_sweeps
         for i, qbond in enumerate(psi.qD):
             file.attrs[f"psi_qbond{i}"] = qbond
         for i, a in enumerate(psi.A):
             # transposition due to different convention for axis ordering
-            file[f"psi_a{i}"] = interleave_complex(a.transpose((1, 0, 2)))
+            file[f"psi_a{i}"] = a.transpose((1, 0, 2))
 
 
 def dmrg_twosite_data():
@@ -135,7 +132,7 @@ def dmrg_twosite_data():
     tol_split = 1e-5
 
     psi = copy.deepcopy(psi_start)
-    en_sweeps = ptn.calculate_ground_state_local_twosite(H, psi, numsweeps, numiter_lanczos=25, tol_split=tol_split)
+    en_sweeps = ptn.dmrg_twosite(H, psi, numsweeps, numiter_lanczos=25, tol_split=tol_split)
 
     # reference (numerically exact) ground state energy
     en_min = np.linalg.eigvalsh(Hmat)[0]
@@ -148,18 +145,18 @@ def dmrg_twosite_data():
             file.attrs[f"h_qbond{i}"] = qbond
         for i, a in enumerate(H.A):
             # transposition due to different convention for axis ordering
-            file[f"h_a{i}"] = interleave_complex(a.transpose((2, 0, 1, 3)))
+            file[f"h_a{i}"] = a.transpose((2, 0, 1, 3))
         for i, qbond in enumerate(psi_start.qD):
             file.attrs[f"psi_start_qbond{i}"] = qbond
         for i, a in enumerate(psi_start.A):
             # transposition due to different convention for axis ordering
-            file[f"psi_start_a{i}"] = interleave_complex(a.transpose((1, 0, 2)))
+            file[f"psi_start_a{i}"] = a.transpose((1, 0, 2))
         file["en_sweeps"] = en_sweeps
         for i, qbond in enumerate(psi.qD):
             file.attrs[f"psi_qbond{i}"] = qbond
         for i, a in enumerate(psi.A):
             # transposition due to different convention for axis ordering
-            file[f"psi_a{i}"] = interleave_complex(a.transpose((1, 0, 2)))
+            file[f"psi_a{i}"] = a.transpose((1, 0, 2))
 
 
 def main():

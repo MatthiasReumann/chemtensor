@@ -27,8 +27,8 @@ char* test_copy_mps()
 	struct mps dst;
 	copy_mps(&src, &dst);
 
-	if (!mps_equals(&src, &dst)) {
-		return "src and dst MPSs don't match.";
+	if (!mps_allclose(&src, &dst, 0)) {
+		return "MPS tensor of copy does not match original MPS tensor";
 	}
 
 	delete_mps(&dst);
@@ -44,6 +44,8 @@ char* test_mps_vdot()
 	if (file < 0) {
 		return "'H5Fopen' in test_mps_vdot failed";
 	}
+
+	const hid_t hdf5_dcomplex_id = construct_hdf5_double_complex_dtype(false);
 
 	// number of lattice sites
 	const int nsites = 4;
@@ -93,7 +95,7 @@ char* test_mps_vdot()
 		allocate_dense_tensor(psi.a[i].dtype, psi.a[i].ndim, psi.a[i].dim_logical, &a_dns);
 		char varname[1024];
 		sprintf(varname, "psi_a%i", i);
-		if (read_hdf5_dataset(file, varname, H5T_NATIVE_DOUBLE, a_dns.data) < 0) {
+		if (read_hdf5_dataset(file, varname, hdf5_dcomplex_id, a_dns.data) < 0) {
 			return "reading tensor entries from disk failed";
 		}
 
@@ -117,7 +119,7 @@ char* test_mps_vdot()
 		allocate_dense_tensor(chi.a[i].dtype, chi.a[i].ndim, chi.a[i].dim_logical, &a_dns);
 		char varname[1024];
 		sprintf(varname, "chi_a%i", i);
-		if (read_hdf5_dataset(file, varname, H5T_NATIVE_DOUBLE, a_dns.data) < 0) {
+		if (read_hdf5_dataset(file, varname, hdf5_dcomplex_id, a_dns.data) < 0) {
 			return "reading tensor entries from disk failed";
 		}
 
@@ -135,7 +137,7 @@ char* test_mps_vdot()
 	mps_vdot(&chi, &psi, &s);
 
 	dcomplex s_ref;
-	if (read_hdf5_dataset(file, "s", H5T_NATIVE_DOUBLE, &s_ref) < 0) {
+	if (read_hdf5_dataset(file, "s", hdf5_dcomplex_id, &s_ref) < 0) {
 		return "reading dot product reference value from disk failed";
 	}
 
@@ -155,6 +157,7 @@ char* test_mps_vdot()
 	ct_free(qbonds_psi);
 	ct_free(qsite);
 
+	H5Tclose(hdf5_dcomplex_id);
 	H5Fclose(file);
 
 	return 0;
@@ -227,6 +230,8 @@ char* test_mps_orthonormalize_qr()
 		return "'H5Fopen' in test_mps_orthonormalize_qr failed";
 	}
 
+	const hid_t hdf5_scomplex_id = construct_hdf5_single_complex_dtype(false);
+
 	// number of lattice sites
 	const int nsites = 6;
 	// local physical dimension
@@ -264,7 +269,7 @@ char* test_mps_orthonormalize_qr()
 			allocate_dense_tensor(mps.a[i].dtype, mps.a[i].ndim, mps.a[i].dim_logical, &a_dns);
 			char varname[1024];
 			sprintf(varname, "a%i", i);
-			if (read_hdf5_dataset(file, varname, H5T_NATIVE_FLOAT, a_dns.data) < 0) {
+			if (read_hdf5_dataset(file, varname, hdf5_scomplex_id, a_dns.data) < 0) {
 				return "reading tensor entries from disk failed";
 			}
 
@@ -348,6 +353,7 @@ char* test_mps_orthonormalize_qr()
 	ct_free(qbonds);
 	ct_free(qsite);
 
+	H5Tclose(hdf5_scomplex_id);
 	H5Fclose(file);
 
 	return 0;
@@ -360,6 +366,8 @@ char* test_mps_compress()
 	if (file < 0) {
 		return "'H5Fopen' in test_mps_compress failed";
 	}
+
+	const hid_t hdf5_scomplex_id = construct_hdf5_single_complex_dtype(false);
 
 	// number of lattice sites
 	const int nsites = 6;
@@ -402,7 +410,7 @@ char* test_mps_compress()
 				allocate_dense_tensor(mps.a[i].dtype, mps.a[i].ndim, mps.a[i].dim_logical, &a_dns);
 				char varname[1024];
 				sprintf(varname, "a%i", i);
-				if (read_hdf5_dataset(file, varname, H5T_NATIVE_FLOAT, a_dns.data) < 0) {
+				if (read_hdf5_dataset(file, varname, hdf5_scomplex_id, a_dns.data) < 0) {
 					return "reading tensor entries from disk failed";
 				}
 
@@ -499,6 +507,7 @@ char* test_mps_compress()
 	ct_free(qbonds);
 	ct_free(qsite);
 
+	H5Tclose(hdf5_scomplex_id);
 	H5Fclose(file);
 
 	return 0;
@@ -645,6 +654,8 @@ char* test_mps_to_statevector()
 		return "'H5Fopen' in test_mps_to_statevector failed";
 	}
 
+	const hid_t hdf5_dcomplex_id = construct_hdf5_double_complex_dtype(false);
+
 	// number of lattice sites
 	const int nsites = 5;
 	// local physical dimension
@@ -680,7 +691,7 @@ char* test_mps_to_statevector()
 		allocate_dense_tensor(mps.a[i].dtype, mps.a[i].ndim, mps.a[i].dim_logical, &a_dns);
 		char varname[1024];
 		sprintf(varname, "a%i", i);
-		if (read_hdf5_dataset(file, varname, H5T_NATIVE_DOUBLE, a_dns.data) < 0) {
+		if (read_hdf5_dataset(file, varname, hdf5_dcomplex_id, a_dns.data) < 0) {
 			return "reading tensor entries from disk failed";
 		}
 
@@ -711,7 +722,7 @@ char* test_mps_to_statevector()
 	struct dense_tensor vec_ref;
 	const long dim_vec_ref[3] = { 1, ipow(d, nsites), 1 };  // include dummy virtual bond dimensions
 	allocate_dense_tensor(CT_DOUBLE_COMPLEX, 3, dim_vec_ref, &vec_ref);
-	if (read_hdf5_dataset(file, "vec", H5T_NATIVE_DOUBLE, vec_ref.data) < 0) {
+	if (read_hdf5_dataset(file, "vec", hdf5_dcomplex_id, vec_ref.data) < 0) {
 		return "reading state vector entries from disk failed";
 	}
 
@@ -731,7 +742,50 @@ char* test_mps_to_statevector()
 	ct_free(qbonds);
 	ct_free(qsite);
 
+	H5Tclose(hdf5_dcomplex_id);
 	H5Fclose(file);
+
+	return 0;
+}
+
+
+char* test_save_mps()
+{
+	 // number of lattice sites
+	const long nsites = 7;
+	// local physical dimension
+	const long d = 4;
+	// local quantum numbers at each physical site
+	const qnumber qsite[4] = { 0, 2, 0, -1 };
+
+	struct rng_state rng_state;
+	seed_rng_state(43, &rng_state);
+
+	struct mps mps;
+	const long max_vdim = 14;
+	const qnumber qnum_sector = 1;
+	construct_random_mps(CT_SINGLE_COMPLEX, nsites, d, qsite, qnum_sector, max_vdim, &rng_state, &mps);
+	if (mps_norm(&mps) == 0) {
+		return "requiring a non-zero MPS";
+	}
+
+	const char* filename = "../test/state/data/test_save_mps.hdf5";
+
+	if (save_mps(filename, &mps) < 0) {
+		return "storing MPS in an HDF5 file failed";
+	}
+
+	struct mps loaded;
+	if (load_mps(filename, &loaded) < 0) {
+		return "loading MPS from an HDF5 file failed";
+	}
+
+	if (!mps_allclose(&mps, &loaded, 0)) {
+		return "MPS loaded from a file does not agree with original MPS stored in this file";
+	}
+
+	delete_mps(&mps);
+	delete_mps(&loaded);
 
 	return 0;
 }
