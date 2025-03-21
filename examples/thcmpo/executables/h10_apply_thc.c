@@ -12,7 +12,7 @@ int main() {
 	const long MAX_VDIM = 250;
 
 	struct mps psi;
-	load_mps("../examples/thcmpo/data/h10_K20_Dim250.h5", &psi);
+	load_mps("../examples/thcmpo/data/h10_K20_Dim250.hdf5", &psi);
 
 	thc_benchmark_apply_thc_run(N, L, TOL, MAX_VDIM, &read_h10, &psi);
 
