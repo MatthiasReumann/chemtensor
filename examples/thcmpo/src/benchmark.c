@@ -1,11 +1,11 @@
 #include "hamiltonian.h"
 #include "mpo.h"
 #include "mps.h"
-#include <stdio.h>
-#include <time.h>
 #include "states.h"
 #include "thcops.h"
 #include "utils.h"
+#include <stdio.h>
+#include <time.h>
 
 void thc_benchmark_apply_thc_run(const long N, const long L, const double tol, const long max_vdim,
 								 void (*read)(double*, double*, double*, double*),

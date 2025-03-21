@@ -74,7 +74,12 @@ void apply_thc_spin_coulomb(const struct thc_spin_hamiltonian* hamiltonian, cons
 
 #pragma omp declare reduction(thc_reduce : struct mps : thc_combine(&omp_out, &omp_in)) \
 	initializer(thc_initialize(&omp_priv, &omp_orig))
+
+#if defined(THC_NO_REDUC)
+#pragma omp parallel for collapse(4) shared(psi, hamiltonian)
+#else
 #pragma omp parallel for collapse(4) shared(psi, hamiltonian) reduction(thc_reduce : acc)
+#endif
 	for (size_t n = 0; n < N; n++) {
 		for (size_t tau = 0; tau < 2; tau++) {
 			for (size_t m = 0; m < N; m++) {
