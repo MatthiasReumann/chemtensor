@@ -246,17 +246,6 @@ bool mps_is_consistent(const struct mps* mps)
 
 //________________________________________________________________________________________________________________________
 ///
-<<<<<<< HEAD
-/// \brief Compare two MPSs for equality.
-///
-bool mps_equals(const struct mps* m1, const struct mps* m2) {
-	if (m1->nsites != m2->nsites || m1->d != m2->d || !qnumber_all_equal(m1->d, m1->qsite, m2->qsite)) {
-		return false;
-	}
-
-	for (int i = 0; i < m1->nsites; i++) {
-		if (!block_sparse_tensor_allclose(&m1->a[i], &m2->a[i], 0.)) {
-=======
 /// \brief Test whether two matrix product states agree in terms of sites, quantum numbers and entries within tolerance 'tol'.
 ///
 bool mps_allclose(const struct mps* chi, const struct mps* psi, const double tol)
@@ -275,7 +264,6 @@ bool mps_allclose(const struct mps* chi, const struct mps* psi, const double tol
 
 	for (int i = 0; i < chi->nsites; i++) {
 		if (!block_sparse_tensor_allclose(&chi->a[i], &psi->a[i], tol)) {
->>>>>>> main
 			return false;
 		}
 	}

@@ -2,7 +2,6 @@
 #include "mpo.h"
 #include "mps.h"
 #include "states.h"
-#include "storage.h"
 #include "thcops.h"
 #include "utils.h"
 
@@ -13,7 +12,7 @@ int main() {
 	const long N = 27;
 	const long L = 10;
 
-	const size_t K = 2;
+	const size_t K = 20;
 
 	struct dense_tensor zeta; // ζ
 	{
@@ -51,7 +50,7 @@ int main() {
 		move_mps_data(&ret, &psi);
 	}
 
-	save_mps_hdf5(&psi, "h10_K20_Dim250.hdf5");
+	save_mps("h10_K20_Dim250.hdf5", &psi);
 
 	delete_mps(&psi);
 	delete_dense_tensor(&tkin);

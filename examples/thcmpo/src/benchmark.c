@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <time.h>
 #include "states.h"
-#include "storage.h"
 #include "thcops.h"
 #include "utils.h"
 

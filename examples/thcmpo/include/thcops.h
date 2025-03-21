@@ -4,7 +4,7 @@
 
 struct thc_spin_hamiltonian {
 	struct mpo T;         // kinetic MPO
-	struct mpo* thc_mpos; // list of length `4 * thc_rank` containing G[μ, σ, ν, τ]
+	struct mpo* thc_mpos; // list of length `4 * thc_rank` containing G[μ, σ]
 	struct dense_tensor* zeta;
 
 	long thc_rank; // THC-Rank N

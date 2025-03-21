@@ -16,8 +16,8 @@
 
 /// Helper declarations
 
-void mps_add_combiner(struct mps* out, struct mps* in);
-void mps_add_initializer(struct mps* priv, struct mps* orig);
+void thc_combine(struct mps* out, struct mps* in);
+void thc_initialize(struct mps* priv, struct mps* orig);
 void add_and_compress(const struct mps* phi, const struct mps* psi, const double tol, const long max_vdim, struct mps* ret);
 void construct_thc_spin_mpos(const struct dense_tensor* chi, struct mpo* thc_mpos);
 long index_to_g_offset(const long N, const size_t i, const size_t s);
@@ -72,9 +72,9 @@ void apply_thc_spin_coulomb(const struct thc_spin_hamiltonian* hamiltonian, cons
 #if defined(_OPENMP)
 	struct mps acc = {.nsites = -1};
 
-#pragma omp declare reduction(mpsReduceAdd : struct mps : mps_add_combiner(&omp_out, &omp_in)) \
-	initializer(mps_add_initializer(&omp_priv, &omp_orig))
-#pragma omp parallel for collapse(4) shared(psi, hamiltonian) reduction(mpsReduceAdd : acc)
+#pragma omp declare reduction(thc_reduce : struct mps : thc_combine(&omp_out, &omp_in)) \
+	initializer(thc_initialize(&omp_priv, &omp_orig))
+#pragma omp parallel for collapse(4) shared(psi, hamiltonian) reduction(thc_reduce : acc)
 	for (size_t n = 0; n < N; n++) {
 		for (size_t tau = 0; tau < 2; tau++) {
 			for (size_t m = 0; m < N; m++) {
@@ -107,7 +107,7 @@ void apply_thc_spin_coulomb(const struct thc_spin_hamiltonian* hamiltonian, cons
 					const double alpha = 0.5 * ((double*)zeta->data)[alpha_off]; // ɑ = .5 * ζ[μ, ν]
 					scale_block_sparse_tensor(&alpha, &(full_layer_psi.a[0]));
 
-					mps_add_combiner(&acc, &full_layer_psi);
+					thc_combine(&acc, &full_layer_psi);
 
 					ct_free(info);
 					delete_mps(&half_layer_psi);
@@ -176,7 +176,7 @@ void apply_thc_spin_coulomb(const struct thc_spin_hamiltonian* hamiltonian, cons
 
 /// Helper implementations
 
-void mps_add_combiner(struct mps* out, struct mps* in) {
+void thc_combine(struct mps* out, struct mps* in) {
 	if (out->nsites == -1) { // uninitialized state
 		move_mps_data(in, out);
 	} else {
@@ -190,7 +190,7 @@ void mps_add_combiner(struct mps* out, struct mps* in) {
 	}
 }
 
-void mps_add_initializer(struct mps* priv, struct mps* orig) {
+void thc_initialize(struct mps* priv, struct mps* orig) {
 	priv->nsites = orig->nsites;
 }
 
@@ -234,7 +234,7 @@ int mps_compress_no_qr(const double tol, const long max_vdim,
 	// quantum numbers for 'a_tail' should match due to preceeding QR orthonormalization // <--- (???)
 
 	assert(a_tail.blocks[0] != NULL);
-	
+
 	double d = *((double*)a_tail.blocks[0]->data);
 	// absorb potential phase factor into MPS tensor
 	if (d < 0) {
@@ -294,8 +294,6 @@ void construct_thc_mpo_assembly(const int nsites, const double* chi_row, const b
 	const double annihilation[4] = {0., 1., 0., 0.}; // bosonic annihilation
 
 	const double coeffmap[] = {0., 1.}; // first two entries must always be 0 and 1
-
-	struct mpo_graph graph; // graph for MPO construction
 
 	// allocate and set memory for physical quantum numbers
 	assembly->d = d;
@@ -478,8 +476,6 @@ void construct_thc_spin_mpo_assembly(const int nsites, const double* chi_row, co
 	const int OID_PQ = 2;
 
 	const double coeffmap[] = {0., 1.}; // first two entries must always be 0 and 1
-
-	struct mpo_graph graph; // graph for MPO construction
 
 	// allocate and set memory for physical quantum numbers
 	assembly->d = d;
