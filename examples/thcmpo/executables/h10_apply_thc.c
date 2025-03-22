@@ -9,7 +9,7 @@ int main() {
 	const long L = 10;
 
 	const double TOL = 0;
-	const long MAX_VDIM = 250;
+	const long MAX_VDIM = 25;
 
 	struct mps psi;
 	load_mps("../examples/thcmpo/data/h10_K20_Dim250.hdf5", &psi);
